@@ -1,0 +1,179 @@
+/* App-level layout CSS */
+
+.app-layout {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ─── Header ──────────────────────────────────── */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-logo {
+  width: 44px;
+  height: 44px;
+  background: var(--grad-card);
+  border: 1px solid var(--border-bright);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-glow-cyan);
+  flex-shrink: 0;
+}
+
+.brand-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.brand-sub {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  letter-spacing: 0.01em;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Mode switcher */
+.mode-switcher {
+  display: flex;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 4px;
+  gap: 4px;
+}
+
+.mode-btn {
+  padding: 7px 16px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-main);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  white-space: nowrap;
+}
+
+.mode-btn.active {
+  background: rgba(99,220,219,0.15);
+  color: var(--accent-cyan);
+  border-bottom: 2px solid var(--accent-cyan);
+}
+
+.mode-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.mode-btn:hover:not(.active):not(:disabled) {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-primary);
+}
+
+/* ─── Main Grid ───────────────────────────────── */
+.app-main {
+  display: grid;
+  grid-template-columns: minmax(320px, 400px) 1fr minmax(260px, 320px);
+  gap: 20px;
+  padding: 24px 0;
+  flex: 1;
+  align-items: start;
+}
+
+.col-left,
+.col-middle,
+.col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Section card container */
+.section-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+}
+
+/* ─── Footer ──────────────────────────────────── */
+.app-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ─── Responsive ──────────────────────────────── */
+@media (max-width: 1100px) {
+  .app-main {
+    grid-template-columns: 1fr 1fr;
+  }
+  .col-right {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .col-right > * {
+    flex: 1;
+    min-width: 260px;
+  }
+}
+
+@media (max-width: 700px) {
+  .app-main {
+    grid-template-columns: 1fr;
+  }
+  .col-right {
+    flex-direction: column;
+  }
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .brand-title {
+    font-size: 1.25rem;
+  }
+}

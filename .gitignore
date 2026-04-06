@@ -1,0 +1,55 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# ML Models (large files — store in releases or cloud storage)
+ml/models/*.h5
+ml/models/*.tflite
+ml/models/*.keras
+backend/translator/ml/models/*.h5
+backend/translator/ml/models/*.tflite
+
+# ML Data (large — don't commit raw data)
+ml/data/raw/
+ml/data/processed/
+
+# Node / React
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+notebooks/.ipynb_checkpoints/
