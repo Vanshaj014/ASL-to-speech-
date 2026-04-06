@@ -30,8 +30,10 @@ from .ml.mediapipe_utils import get_holistic_model, extract_static_keypoints, ex
 
 logger = logging.getLogger(__name__)
 
-SEQUENCE_LENGTH = 30  # Frames for dynamic model
-FRAME_FEATURES = 258  # Feature size per frame
+SEQUENCE_LENGTH = 30       # Frames for dynamic model
+FRAME_FEATURES = 258       # Feature size per frame
+MAX_FRAME_BYTES = 500_000  # 500 KB max per frame — DoS protection
+ALLOWED_MODES = {"static", "dynamic"}  # Whitelist for set_mode
 
 
 class TranslatorConsumer(AsyncWebsocketConsumer):
@@ -79,7 +81,14 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
                 await self._process_frame(data)
 
             elif msg_type == "set_mode":
-                self.mode = data.get("mode", "static")
+                requested = data.get("mode", "static")
+                if requested not in ALLOWED_MODES:
+                    await self.send(json.dumps({
+                        "type": "error",
+                        "message": f"Invalid mode. Allowed: {sorted(ALLOWED_MODES)}"
+                    }))
+                    return
+                self.mode = requested
                 self.frame_sequence.clear()
                 await self.send(json.dumps({
                     "type": "mode_changed",
@@ -93,13 +102,19 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
             await self.send(json.dumps({"type": "error", "message": "Invalid JSON"}))
         except Exception as e:
             logger.error(f"[WS] Error processing message: {e}")
-            await self.send(json.dumps({"type": "error", "message": str(e)}))
+            # Never leak internal error details to the client
+            await self.send(json.dumps({"type": "error", "message": "Internal server error"}))
 
     async def _process_frame(self, data):
         """Decode frame, extract landmarks, run inference, send result."""
         # Decode base64 JPEG frame from frontend
         frame_b64 = data.get("frame", "")
         if not frame_b64:
+            return
+
+        # DoS protection: reject oversized frames before any processing
+        if len(frame_b64) > MAX_FRAME_BYTES:
+            logger.warning("[WS] Oversized frame rejected")
             return
 
         # Remove data URL prefix if present

@@ -15,6 +15,14 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-dev-key-change
 
 DEBUG = os.environ.get("DEBUG", "True") == "True"
 
+# Guard: refuse to start in production with the insecure default key
+if not DEBUG and "django-insecure" in SECRET_KEY:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        "DJANGO_SECRET_KEY must be set to a strong, unique value in production. "
+        "Generate one with: python -c \"from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())\""
+    )
+
 ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
 # ─── Installed Apps ──────────────────────────────────────────────────────────
@@ -117,6 +125,23 @@ TIME_ZONE = "Asia/Kolkata"
 USE_I18N = True
 USE_TZ = True
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ─── Production Security Headers ──────────────────────────────────────────────
+# These activate automatically when DEBUG=False (i.e., in production)
+if not DEBUG:
+    SECURE_HSTS_SECONDS = 31536000          # 1 year HSTS
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True      # Prevent MIME sniffing
+    SECURE_BROWSER_XSS_FILTER = True        # Legacy XSS header
+    SECURE_SSL_REDIRECT = True              # Force HTTPS
+    SESSION_COOKIE_SECURE = True            # Cookies over HTTPS only
+    CSRF_COOKIE_SECURE = True
+    X_FRAME_OPTIONS = "DENY"                # Clickjacking protection
+else:
+    # Safe defaults for development
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "SAMEORIGIN"
 
 # ─── Logging ──────────────────────────────────────────────────────────────────
 LOGGING = {

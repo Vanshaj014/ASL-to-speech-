@@ -52,13 +52,22 @@ class SessionDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = TranslationSessionSerializer
 
 
+TTS_MAX_CHARS = 500  # Prevent abuse via very long TTS requests
+
+
 @api_view(["POST"])
 def tts_trigger(request):
-    """Text-to-speech endpoint: returns audio as base64 or triggers local TTS."""
+    """Text-to-speech endpoint: triggers local TTS for translated sentences."""
     from .ml.tts_engine import speak_text
-    text = request.data.get("text", "")
+    text = request.data.get("text", "").strip()
     if not text:
         return Response({"error": "No text provided"}, status=status.HTTP_400_BAD_REQUEST)
+    if len(text) > TTS_MAX_CHARS:
+        return Response(
+            {"error": f"Text too long (max {TTS_MAX_CHARS} characters)"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
     success = speak_text(text)
-    return Response({"success": success, "text": text})
+    # Do NOT echo user input back — return only the operation result
+    return Response({"success": success})
