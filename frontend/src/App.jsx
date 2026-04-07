@@ -42,7 +42,7 @@ export default function App() {
     }
   }, []);
 
-  const { status: wsStatus, sendMessage } = useWebSocket(handleMessage);
+  const { status: wsStatus, sendMessage, canSendFrame } = useWebSocket(handleMessage);
 
   // Switch mode and inform server
   const handleModeChange = (newMode) => {
@@ -123,6 +123,7 @@ export default function App() {
               </div>
               <VideoFeed
                 sendMessage={sendMessage}
+                canSendFrame={canSendFrame}
                 wsStatus={wsStatus}
                 isCapturing={isCapturing}
               />

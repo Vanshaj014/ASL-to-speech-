@@ -61,10 +61,53 @@ def build_model(num_classes: int, input_size: int = 63) -> keras.Model:
     return model
 
 
+def augment_landmarks(X, y):
+    """
+    Apply geometric noise (rotation and jitter) to 3D landmarks to simulate 
+    different webcam angles and distances. Multiplies training data size.
+    """
+    print("[INFO] Augmenting data to improve real-world robustness...")
+    X_aug = []
+    y_aug = []
+    
+    for i in range(len(X)):
+        # Original
+        X_aug.append(X[i])
+        y_aug.append(y[i])
+        
+        # We know each X[i] is 63 floats (21 points * 3 coords)
+        pts = X[i].reshape(21, 3)
+        
+        # 1. Subtle Jitter & Scale (simulate hand distance)
+        scale = np.random.uniform(0.9, 1.1)
+        noise = np.random.normal(0, 0.015, size=pts.shape)
+        pts_jitter = (pts * scale) + noise
+        X_aug.append(pts_jitter.flatten())
+        y_aug.append(y[i])
+        
+        # 2. Rotation around Z-axis (simulate tilted hand in screen plane)
+        theta = np.radians(np.random.uniform(-20, 20))
+        c, s = np.cos(theta), np.sin(theta)
+        rot_matrix = np.array([
+            [c, -s, 0],
+            [s,  c, 0],
+            [0,  0, 1]
+        ])
+        pts_rot = np.dot(pts, rot_matrix.T)
+        X_aug.append(pts_rot.flatten())
+        y_aug.append(y[i])
+
+    print(f"[INFO] Augmented data: {len(X)} -> {len(X_aug)} samples")
+    return np.array(X_aug), np.array(y_aug)
+
+
 def train():
     # Load data
     X, y, label_map = load_data()
     num_classes = len(label_map)
+
+    # Augment mathematically to increase generic real-world accuracy
+    X, y = augment_landmarks(X, y)
 
     # One-hot encode labels
     lb = LabelBinarizer()

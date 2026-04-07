@@ -121,27 +121,28 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
         if "," in frame_b64:
             frame_b64 = frame_b64.split(",")[1]
 
-        try:
-            img_bytes = base64.b64decode(frame_b64)
-            img_array = np.frombuffer(img_bytes, dtype=np.uint8)
-            frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-            if frame is None:
-                return
-        except Exception as e:
-            logger.error(f"[WS] Frame decode error: {e}")
-            return
-
-        # Run MediaPipe in thread pool (it's CPU-bound)
+        # Run CPU-bound decoding and MediaPipe processing in thread pool
         result = await asyncio.get_event_loop().run_in_executor(
-            None, self._run_mediapipe_and_predict, frame
+            None, self._run_mediapipe_and_predict, frame_b64
         )
 
         if result:
             await self.send(json.dumps(result))
 
-    def _run_mediapipe_and_predict(self, frame):
-        """Synchronous: MediaPipe extraction + model inference."""
+    def _run_mediapipe_and_predict(self, frame_b64):
+        """Synchronous (Worker Thread): Decode base64, extract landmarks, model inference."""
         if self.holistic is None:
+            return None
+
+        # 1. Decode base64 to image (moved here to free the ASGI event loop)
+        try:
+            img_bytes = base64.b64decode(frame_b64)
+            img_array = np.frombuffer(img_bytes, dtype=np.uint8)
+            frame = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
+            if frame is None:
+                return None
+        except Exception as e:
+            logger.error(f"[WS] worker thread decode error: {e}")
             return None
 
         from .ml.predictor import predictor

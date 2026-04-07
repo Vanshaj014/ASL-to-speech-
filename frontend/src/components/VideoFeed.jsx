@@ -11,7 +11,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 const FRAME_INTERVAL_MS = 100;  // 10 FPS — balance between latency and CPU
 const JPEG_QUALITY = 0.7;       // Reduce size for WS throughput
 
-export default function VideoFeed({ sendMessage, wsStatus, isCapturing, onHandDetected }) {
+export default function VideoFeed({ sendMessage, canSendFrame, wsStatus, isCapturing, onHandDetected }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const frameTimerRef = useRef(null);
@@ -72,6 +72,7 @@ export default function VideoFeed({ sendMessage, wsStatus, isCapturing, onHandDe
 
     frameTimerRef.current = setInterval(() => {
       if (!video || video.readyState < 2) return;
+      if (canSendFrame && !canSendFrame()) return; // Backpressure: drop frame if backend hasn't responded
 
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 480;

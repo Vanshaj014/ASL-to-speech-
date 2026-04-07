@@ -19,6 +19,7 @@ export function useWebSocket(onMessage) {
   const reconnectRef = useRef(null);
   const reconnectCount = useRef(0);
   const isMounted = useRef(true);
+  const pendingFramesRef = useRef(0);
 
   const [status, setStatus] = useState("disconnected"); // connected | disconnected | connecting | error
 
@@ -54,6 +55,12 @@ export function useWebSocket(onMessage) {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "pong") return; // Ignore heartbeat responses
+        
+        // Acknowledge frame response to relieve backpressure
+        if (data.type === "prediction" || data.type === "buffering" || data.type === "error") {
+            pendingFramesRef.current = Math.max(0, pendingFramesRef.current - 1);
+        }
+        
         if (onMessage) onMessage(data);
       } catch (e) {
         console.error("[WS] Failed to parse message:", e);
@@ -89,10 +96,16 @@ export function useWebSocket(onMessage) {
       wsRef.current = null;
     }
     setStatus("disconnected");
+    pendingFramesRef.current = 0;
+  }, []);
+
+  const canSendFrame = useCallback(() => {
+    return pendingFramesRef.current === 0;
   }, []);
 
   const sendMessage = useCallback((data) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      if (data.type === "frame") pendingFramesRef.current++;
       wsRef.current.send(JSON.stringify(data));
       return true;
     }
@@ -112,5 +125,5 @@ export function useWebSocket(onMessage) {
     };
   }, [connect]);
 
-  return { status, sendMessage, connect, disconnect };
+  return { status, sendMessage, canSendFrame, connect, disconnect };
 }
