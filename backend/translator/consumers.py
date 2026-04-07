@@ -154,7 +154,7 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
         has_hand = results.right_hand_landmarks is not None or results.left_hand_landmarks is not None
 
         if self.mode == "static":
-            keypoints = extract_static_keypoints(results)
+            keypoints = extract_static_keypoints(results, image_shape=frame.shape)
             prediction = predictor.predict_static(keypoints)
             return {
                 "type": "prediction",

@@ -35,6 +35,12 @@ backend/translator/ml/models/*.tflite
 ml/data/raw/
 ml/data/processed/
 
+# ML Logs and Output Graphics
+ml/logs/
+ml/models/*.png
+ml/models/*.npy
+backend/translator/ml/models/*.npy
+
 # Node / React
 frontend/node_modules/
 frontend/dist/

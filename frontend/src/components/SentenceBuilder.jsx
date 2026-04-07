@@ -122,11 +122,11 @@ export default function SentenceBuilder({ prediction, onSentenceChange }) {
               key={`${word}-${i}`}
               className="animate-fade-in"
               style={{
-                background: "rgba(99,220,219,0.08)",
-                border: "1px solid rgba(99,220,219,0.2)",
+                background: "var(--bg-element)",
+                border: "1px solid var(--border)",
                 borderRadius: "6px",
                 padding: "2px 10px",
-                color: "var(--accent-cyan)",
+                color: "var(--text-primary)",
               }}
             >
               {word}

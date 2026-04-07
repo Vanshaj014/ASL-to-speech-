@@ -55,24 +55,57 @@ def extract_keypoints(results):
     return np.concatenate([rh, lh, pose])
 
 
-def extract_static_keypoints(results):
+def extract_static_keypoints(results, image_shape=None):
     """
-    Extract only right-hand landmarks for static sign classification (A-Z).
+    Extract landmarks for static sign classification (A-Z).
+    Normalizes relative to the wrist and corrects for webcam aspect ratio.
+    If the right hand is missing, mirrors the left hand so the model works for both!
     Returns a 1D array of shape (63,).
-    Normalizes relative to the wrist landmark.
     """
-    if results.right_hand_landmarks:
+    landmarks = None
+    is_left = False
+
+    # 1. Try Holistic right hand
+    if getattr(results, "right_hand_landmarks", None):
         landmarks = results.right_hand_landmarks.landmark
+    # 2. Try Holistic left hand (and we'll mirror it)
+    elif getattr(results, "left_hand_landmarks", None):
+        landmarks = results.left_hand_landmarks.landmark
+        is_left = True
+    # 3. Fallback for the Hands() model used in kaggle preprocessing
+    elif getattr(results, "multi_hand_landmarks", None):
+        landmarks = results.multi_hand_landmarks[0].landmark
+
+    if landmarks:
         wrist = landmarks[0]  # Wrist is landmark 0
-        # Normalize relative to wrist and scale by bounding box
-        coords = np.array([[lm.x - wrist.x, lm.y - wrist.y, lm.z - wrist.z]
-                           for lm in landmarks])
+        
+        # Correct for aspect ratio distortion (Kaggle was 1:1, webcam is 4:3)
+        x_scale = 1.0
+        y_scale = 1.0
+        if image_shape is not None:
+            h, w = image_shape[:2]
+            x_scale = w / h  # e.g., 640/480 = ~1.33
+
+        coords = []
+        for lm in landmarks:
+            # Calculate distance from wrist
+            x_rel = (lm.x - wrist.x) * x_scale
+            y_rel = (lm.y - wrist.y) * y_scale
+            z_rel = (lm.z - wrist.z) * x_scale
+            
+            # Mirror left hand coordinates to look like a right hand to the model
+            if is_left:
+                x_rel = -x_rel 
+                
+            coords.append([x_rel, y_rel, z_rel])
+
+        coords = np.array(coords)
         # Scale normalization: divide by the max absolute value
         scale = np.max(np.abs(coords)) + 1e-6
         coords = coords / scale
         return coords.flatten()
-    else:
-        return np.zeros(STATIC_FEATURE_SIZE)
+        
+    return np.zeros(STATIC_FEATURE_SIZE)
 
 
 def normalize_keypoints(keypoints):

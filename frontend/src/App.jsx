@@ -66,28 +66,18 @@ export default function App() {
 
   return (
     <>
-      {/* Ambient background */}
-      <div className="bg-ambient" aria-hidden="true" />
-
       {/* Main layout */}
       <div className="app-layout">
         {/* ─── Header ─────────────────────────────────────── */}
         <header className="app-header">
           <div className="header-brand">
-            <div className="brand-logo" aria-hidden="true">
-              <svg viewBox="0 0 36 36" fill="none" width="36" height="36">
-                <path d="M18 3C9.716 3 3 9.716 3 18s6.716 15 15 15 15-6.716 15-15S26.284 3 18 3z" fill="url(#grad)" opacity=".15"/>
-                <path d="M14 9v6M14 9c0-1.1.9-2 2-2s2 .9 2 2v6M18 9c0-1.1.9-2 2-2s2 .9 2 2v6M22 11c0-1.1.9-2 2-2s2 .9 2 2v7a8 8 0 01-8 8h-2a6 6 0 01-6-6v-4M10 15v4" stroke="url(#grad)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                <defs>
-                  <linearGradient id="grad" x1="3" y1="3" x2="33" y2="33" gradientUnits="userSpaceOnUse">
-                    <stop stopColor="#63dcdb"/>
-                    <stop offset="1" stopColor="#8b5cf6"/>
-                  </linearGradient>
-                </defs>
+            <div className="brand-logo" aria-hidden="true" style={{ background: "var(--bg-element)", border: "1px solid var(--border)", boxShadow: "none" }}>
+              <svg viewBox="0 0 36 36" fill="none" width="28" height="28">
+                <path d="M14 9v6M14 9c0-1.1.9-2 2-2s2 .9 2 2v6M18 9c0-1.1.9-2 2-2s2 .9 2 2v6M22 11c0-1.1.9-2 2-2s2 .9 2 2v7a8 8 0 01-8 8h-2a6 6 0 01-6-6v-4M10 15v4" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
             <div>
-              <h1 className="brand-title">SignSpeak <span className="gradient-text">AI</span></h1>
+              <h1 className="brand-title">SignSpeak <span className="text-accent">AI</span></h1>
               <p className="brand-sub">Real-Time ASL Sign Language Translator</p>
             </div>
           </div>
@@ -155,7 +145,7 @@ export default function App() {
                 ) : (
                   <>
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                      <circle cx="12" cy="12" r="10" fill="rgba(255,255,255,0.2)"/>
+                      <circle cx="12" cy="12" r="10" fill="transparent" stroke="currentColor" strokeWidth="2"/>
                       <circle cx="12" cy="12" r="4"/>
                     </svg>
                     Start Translating
@@ -218,7 +208,7 @@ export default function App() {
                   "Plain background gives better detection",
                 ].map((tip, i) => (
                   <li key={i} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
-                    <span style={{ color: "var(--accent-cyan)", fontSize: "0.9rem", flexShrink: 0 }}>→</span>
+                    <span style={{ color: "var(--text-muted)", fontSize: "0.9rem", flexShrink: 0 }}>→</span>
                     <span className="text-xs text-muted" style={{ lineHeight: 1.5 }}>{tip}</span>
                   </li>
                 ))}

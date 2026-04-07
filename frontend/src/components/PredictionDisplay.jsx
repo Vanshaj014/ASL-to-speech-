@@ -24,7 +24,7 @@ function ConfidenceBar({ value, color = "var(--accent-cyan)" }) {
       <div className="confidence-track">
         <div
           className="confidence-fill"
-          style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${barColor}aa, ${barColor})` }}
+          style={{ width: `${pct}%`, background: barColor }}
         />
       </div>
     </div>
@@ -71,7 +71,7 @@ export default function PredictionDisplay({ prediction, mode, isCapturing, buffe
           <>
             <div
               key={animKey}
-              className="sign-display gradient-text animate-pop-in"
+              className="sign-display animate-pop-in"
             >
               {displaySign.sign.toUpperCase()}
             </div>
@@ -95,7 +95,7 @@ export default function PredictionDisplay({ prediction, mode, isCapturing, buffe
                 className="confidence-fill"
                 style={{
                   width: `${bufferPct}%`,
-                  background: "linear-gradient(90deg, var(--accent-violet), var(--accent-cyan))"
+                  background: "var(--accent-primary)"
                 }}
               />
             </div>
