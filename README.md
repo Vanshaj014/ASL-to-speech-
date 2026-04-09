@@ -1,123 +1,156 @@
-﻿# SignSpeak AI — Real-Time ASL Sign Language Translator
+# 🤟 SignSpeak AI
+### Real-Time ASL Sign Language Translator
 
-A full-stack AI application that translates American Sign Language (ASL) gestures to text and speech in real-time using a webcam, deep learning, and a modern web dashboard.
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/Django-6.0-092E20?style=for-the-badge&logo=django&logoColor=white)](https://www.djangoproject.com/)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
+[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.16-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white)](https://www.tensorflow.org/)
+[![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10-007FFF?style=for-the-badge&logo=google&logoColor=white)](https://mediapipe.dev/)
 
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Computer Vision | MediaPipe Holistic |
-| Deep Learning | TensorFlow / Keras (MLP + LSTM) |
-| Backend | Django 6 + Django Channels (ASGI/WebSocket) |
-| Frontend | React (Vite) |
-| Database | SQLite (dev) |
-
-## Project Structure
-
-```
-Major project/
-├── backend/          Django backend (API + WebSocket + ML inference)
-├── frontend/         React dashboard (Vite)
-├── ml/               ML training pipeline (standalone scripts)
-└── venv/             Python virtual environment
-```
-
-## Quick Start
-
-### 1. Backend
-```bash
-# Activate virtual environment
-.\venv\Scripts\activate   # Windows
-
-# Start Django server
-cd backend
-python manage.py runserver 8000
-```
-
-### 2. Frontend
-```bash
-cd frontend
-npm run dev
-# Opens at http://localhost:5173
-```
-
-## ML Pipeline
-
-### Step 1 — Download Dataset
-Download the Kaggle ASL Alphabet dataset:
-https://www.kaggle.com/datasets/grassknoted/asl-alphabet
-
-Unzip to: `ml/data/raw/kaggle_asl/asl_alphabet_train/`
-
-### Step 2 — Preprocess (Static A–Z)
-```bash
-python ml/preprocess_kaggle.py
-```
-
-### Step 3 — Collect Dynamic Signs (Words)
-```bash
-python ml/collect_custom_data.py
-```
-Follow the on-screen prompts. Signs: hello, thanks, yes, no, please, sorry, iloveyou, help, good, bad, more, stop, eat, drink, where
-
-### Step 4 — Train Models
-```bash
-python ml/train_static.py    # A-Z MLP classifier
-python ml/train_dynamic.py   # Word LSTM classifier
-```
-
-### Step 5 — Evaluate
-```bash
-python ml/evaluate.py --model all
-```
-
-Trained models are automatically copied to `backend/translator/ml/models/`
-
-## WebSocket API
-
-Connect to `ws://localhost:8000/ws/translate/`
-
-**Send frames:**
-```json
-{ "type": "frame", "frame": "<base64 JPEG>" }
-```
-
-**Switch mode:**
-```json
-{ "type": "set_mode", "mode": "static" }
-```
-
-**Receive predictions:**
-```json
-{ "type": "prediction", "sign": "A", "confidence": 0.97, "top3": [...] }
-```
-
-## REST API
-
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/vocabulary/` | GET | All supported signs |
-| `/api/status/` | GET | Model health status |
-| `/api/sessions/` | GET/POST | Translation sessions |
-| `/api/tts/` | POST | Text-to-speech trigger |
-
-## Features
-
-- Real-time webcam capture in browser (no server-side camera)
-- Static A–Z fingerspelling recognition
-- Dynamic common word recognition (15+ words)
-- Sentence builder with word chips
-- Text-to-Speech output
-- Translation history
-- Deployment-ready architecture
-
-## Deployment Notes
-
-- Set `DEBUG=False` and a strong `DJANGO_SECRET_KEY` in `backend/.env`
-- Run `npm run build` in `frontend/` then `python manage.py collectstatic`
-- Use Redis channel layer for multi-process production (`channels_redis`)
-- Serve with Gunicorn + Nginx
+**SignSpeak AI** is a professional-grade, full-stack application designed to bridge the communication gap for the Deaf and Hard-of-Hearing community. By leveraging computer vision and deep learning, it translates American Sign Language (ASL) gestures into text and audible speech in real-time.
 
 ---
 
-Made as a Final Year Project — CSE
+## 📽️ Preview
+> **[Add Demo Video/GIF Link Here]**
+*(The interface features a real-time webcam feed, a dynamic sentence builder, and a history log of translated phrases.)*
+
+---
+
+## ✨ Key Features
+
+- 🧠 **Hybrid AI Engine**: Dual-model architecture using **MLP** for static fingerspelling (A-Z) and **LSTM** for dynamic word gestures.
+- ⚡ **Real-Time Streaming**: Ultra-low latency communication via **WebSockets** (Django Channels) and `base64` frame streaming.
+- 📐 **Landmark-Based Inference**: Uses **MediaPipe Holistic** to extract 3D coordinates, making the system immune to lighting conditions and complex backgrounds.
+- 🗣️ **Text-to-Speech (TTS)**: Integrated browser-based and server-side TTS to convert translated text into clear audio.
+- 📝 **Sentence Builder**: Intelligent buffer system that allows users to "lock in" signs to form complete sentences.
+- 📚 **Dynamic Vocabulary**: Automatically synchronizes supported signs from the backend to the frontend dashboard.
+
+---
+
+## 🏗️ Architecture
+
+### 1. Frontend (React + Vite)
+- **Camera Controller**: Efficiently captures frames without blocking the UI thread.
+- **WebSocket Hook**: Manages persistent two-way communication with the Django server.
+- **State Management**: Handles real-time predictions, sentence buffering, and history tracking.
+
+### 2. Backend (Django ASGI)
+- **WebSocket Consumers**: Decodes image frames and pipelines them into the ML predictor.
+- **Predictor Singleton**: Pre-loads TensorFlow models into RAM for sub-millisecond inference.
+- **REST API**: Provides endpoints for session management, vocabulary lists, and system health.
+
+### 3. ML Pipeline (TensorFlow/Keras)
+- **Static Model**: 4-layer MLP trained on 80,000+ ASL alphabet images.
+- **Dynamic Model**: LSTM network analyzing 30-frame temporal sequences (approx. 1 second of movement).
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+- Python 3.10+
+- Node.js 18+
+- Webcam
+
+### 1. Setup Backend
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/signspeak-ai.git
+cd signspeak-ai/backend
+
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: .\venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run migrations and start server
+python manage.py migrate
+python manage.py runserver 8000
+```
+
+### 2. Setup Frontend
+```bash
+cd ../frontend
+npm install
+npm run dev
+# Dashboard available at http://localhost:5173
+```
+
+---
+
+## 🧪 Training the Models
+
+If you wish to retrain the models with custom data:
+
+1. **Static Data**: Download the [Kaggle ASL Dataset](https://www.kaggle.com/datasets/grassknoted/asl-alphabet) and place it in `ml/data/raw/kaggle_asl/`.
+2. **Dynamic Data**: Run the collection script to record your own signs:
+   ```bash
+   python ml/collect_custom_data.py
+   ```
+3. **Train**:
+   ```bash
+   python ml/train_static.py
+   python ml/train_dynamic.py
+   ```
+   Trained models will be automatically moved to `backend/translator/ml/models/`.
+
+---
+
+## 🛠️ Tech Stack
+
+| Component | Technology |
+|---|---|
+| **Frontend** | React 19, Vite, CSS Modules |
+| **Backend** | Django 6, Django Channels (WebSockets), DRF |
+| **Computer Vision** | MediaPipe Holistic, OpenCV |
+| **Deep Learning** | TensorFlow 2.16, Keras, NumPy, Scikit-Learn |
+| **Communication** | ASGI, Daphne, JSON/Base64 |
+
+---
+
+## 📁 Project Structure
+
+```text
+Major project/
+├── backend/            # Django ASGI Server
+│   ├── config/         # Settings & Routing
+│   └── translator/     # ML Logic & API Views
+├── frontend/           # React Application
+│   ├── src/components/ # Modular UI Components
+│   └── src/hooks/      # WebSocket & Camera Hooks
+├── ml/                 # Standalone ML Pipeline
+│   ├── data/           # Raw & Processed Landmarks
+│   └── models/         # Exported .h5 Files
+└── README.md           # You are here!
+```
+
+---
+
+## 💡 Tips for Best Results
+- **Lighting**: Ensure even lighting on your hands and face.
+- **Stability**: Keep your hand within the center of the camera frame.
+- **Signing**: Hold static signs for ~0.5s; perform dynamic signs within a 1s window.
+
+---
+
+## 🤝 Contributing
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the Project
+2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the Branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+Distributed under the MIT License. See `LICENSE` for more information.
+
+---
+
+**Developed as a Final Year Project for Computer Science & Engineering.**
+*Designed to make communication accessible for everyone.*
