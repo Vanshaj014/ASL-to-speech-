@@ -1,19 +1,7 @@
-# 🤟 SignSpeak AI
+﻿# 🤟 SignSpeak AI
 ### Real-Time ASL Sign Language Translator
 
-[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![Django](https://img.shields.io/badge/Django-6.0-092E20?style=for-the-badge&logo=django&logoColor=white)](https://www.djangoproject.com/)
-[![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://reactjs.org/)
-[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.16-FF6F00?style=for-the-badge&logo=tensorflow&logoColor=white)](https://www.tensorflow.org/)
-[![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10-007FFF?style=for-the-badge&logo=google&logoColor=white)](https://mediapipe.dev/)
-
 **SignSpeak AI** is a professional-grade, full-stack application designed to bridge the communication gap for the Deaf and Hard-of-Hearing community. By leveraging computer vision and deep learning, it translates American Sign Language (ASL) gestures into text and audible speech in real-time.
-
----
-
-## 📽️ Preview
-> **[Add Demo Video/GIF Link Here]**
-*(The interface features a real-time webcam feed, a dynamic sentence builder, and a history log of translated phrases.)*
 
 ---
 
@@ -133,22 +121,6 @@ Major project/
 - **Lighting**: Ensure even lighting on your hands and face.
 - **Stability**: Keep your hand within the center of the camera frame.
 - **Signing**: Hold static signs for ~0.5s; perform dynamic signs within a 1s window.
-
----
-
-## 🤝 Contributing
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-Distributed under the MIT License. See `LICENSE` for more information.
 
 ---
 
