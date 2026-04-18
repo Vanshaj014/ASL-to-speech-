@@ -1,7 +1,10 @@
 """
 train_dynamic.py
 -----------------
-Trains an LSTM classifier for dynamic ASL signs (common words).
+Trains a hybrid 1D-CNN + LSTM classifier for dynamic ASL signs (common words).
+The CNN layers extract local motion patterns (velocity spikes, finger flicks)
+across short frame windows, while the LSTM interprets their temporal sequence.
+
 Input: sequences of shape (30, 258) — 30 frames × 258 keypoint features
 Output: N classes (dynamic signs collected via collect_custom_data.py)
 
@@ -81,26 +84,106 @@ def load_dynamic_data():
     return X, y, label_map
 
 
-def build_lstm_model(num_classes: int, sequence_length: int = 30,
-                     frame_features: int = 258) -> keras.Model:
+def augment_sequences(X, y):
+    """
+    Temporal data augmentation for dynamic gesture sequences.
+    Generates synthetic variations to improve generalization:
+      1. Speed jitter:  randomly stretch/compress time
+      2. Gaussian noise: simulate sensor noise on landmarks
+      3. Time shift:    shift the gesture forward/backward in the window
+    """
+    print("[INFO] Augmenting dynamic sequences...")
+    X_aug, y_aug = list(X), list(y)
+
+    for i in range(len(X)):
+        seq = X[i]  # (30, 258)
+
+        # 1. Speed jitter — resample the sequence at a slightly different rate
+        speed_factor = np.random.uniform(0.85, 1.15)
+        new_len = int(SEQUENCE_LENGTH * speed_factor)
+        indices = np.linspace(0, SEQUENCE_LENGTH - 1, new_len).astype(int)
+        stretched = seq[indices]
+        # Pad or truncate back to SEQUENCE_LENGTH
+        if len(stretched) < SEQUENCE_LENGTH:
+            pad = np.zeros((SEQUENCE_LENGTH - len(stretched), FRAME_FEATURES))
+            stretched = np.vstack([stretched, pad])
+        else:
+            stretched = stretched[:SEQUENCE_LENGTH]
+        X_aug.append(stretched)
+        y_aug.append(y[i])
+
+        # 2. Gaussian noise on landmark coordinates
+        noise = np.random.normal(0, 0.01, size=seq.shape)
+        X_aug.append(seq + noise)
+        y_aug.append(y[i])
+
+        # 3. Time shift — shift gesture window by a few frames
+        shift = np.random.randint(-3, 4)  # -3 to +3 frames
+        shifted = np.roll(seq, shift, axis=0)
+        if shift > 0:
+            shifted[:shift] = 0  # Zero out wrapped frames
+        elif shift < 0:
+            shifted[shift:] = 0
+        X_aug.append(shifted)
+        y_aug.append(y[i])
+
+    X_aug = np.array(X_aug, dtype=np.float32)
+    y_aug = np.array(y_aug, dtype=np.int32)
+    print(f"[INFO] Augmented: {len(X)} -> {len(X_aug)} sequences (4x)")
+    return X_aug, y_aug
+
+
+def build_cnn_lstm_model(num_classes: int, sequence_length: int = 30,
+                         frame_features: int = 258) -> keras.Model:
+    """
+    Hybrid 1D-CNN + LSTM architecture for dynamic gesture recognition.
+
+    Pipeline:
+      Input (30, 258)
+        -> Conv1D(64, kernel=3)  -- detect local motion patterns across 3-frame windows
+        -> BatchNorm -> ReLU -> MaxPool(2) -- compress to (15, 64)
+        -> Conv1D(128, kernel=3) -- detect higher-level motion features
+        -> BatchNorm -> ReLU -> MaxPool(2) -- compress to (7, 128)
+        -> LSTM(128)             -- understand temporal sequence meaning
+        -> Dropout(0.4)
+        -> Dense(64) -> ReLU
+        -> Dropout(0.3)
+        -> Dense(num_classes) -> Softmax
+    """
     model = keras.Sequential([
         layers.Input(shape=(sequence_length, frame_features)),
-        layers.LSTM(64, return_sequences=True, activation='tanh'),
-        layers.Dropout(0.3),
-        layers.LSTM(128, return_sequences=True, activation='tanh'),
-        layers.Dropout(0.3),
-        layers.LSTM(64, return_sequences=False, activation='tanh'),
-        layers.Dropout(0.3),
+
+        # --- 1D CNN Block 1: Local motion pattern extraction ---
+        layers.Conv1D(64, kernel_size=3, padding='same'),
+        layers.BatchNormalization(),
+        layers.Activation('relu'),
+        layers.MaxPool1D(pool_size=2),        # (30, 258) -> (15, 64)
+
+        # --- 1D CNN Block 2: Higher-level motion features ---
+        layers.Conv1D(128, kernel_size=3, padding='same'),
+        layers.BatchNormalization(),
+        layers.Activation('relu'),
+        layers.MaxPool1D(pool_size=2),        # (15, 64) -> (7, 128)
+
+        # --- LSTM: Temporal sequence understanding ---
+        layers.LSTM(128, return_sequences=False, activation='tanh'),
+        layers.Dropout(0.4),
+
+        # --- Classification head ---
         layers.Dense(64, activation='relu'),
-        layers.Dense(32, activation='relu'),
+        layers.Dropout(0.3),
         layers.Dense(num_classes, activation='softmax')
-    ], name="asl_dynamic_lstm")
+    ], name="asl_dynamic_cnn_lstm")
+
     return model
 
 
 def train():
     X, y, label_map = load_dynamic_data()
     num_classes = len(label_map)
+
+    # Temporal data augmentation
+    X, y = augment_sequences(X, y)
 
     # One-hot encode
     y_onehot = keras.utils.to_categorical(y, num_classes)
@@ -113,7 +196,7 @@ def train():
 
     print(f"[INFO] Train: {len(X_train)} | Val: {len(X_val)} | Test: {len(X_test)}")
 
-    model = build_lstm_model(num_classes)
+    model = build_cnn_lstm_model(num_classes)
     model.summary()
 
     model.compile(
@@ -125,14 +208,13 @@ def train():
     callbacks = [
         keras.callbacks.EarlyStopping(patience=15, restore_best_weights=True, verbose=1),
         keras.callbacks.ModelCheckpoint(
-            str(MODEL_DIR / "dynamic_lstm_best.keras"),
+            str(MODEL_DIR / "dynamic_cnn_lstm_best.keras"),
             save_best_only=True, monitor='val_accuracy', verbose=1
         ),
         keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=7, min_lr=1e-6, verbose=1),
-        keras.callbacks.TensorBoard(log_dir=str(BASE_DIR / "logs" / "dynamic"), histogram_freq=1)
     ]
 
-    print("\n[TRAIN] Starting LSTM training...")
+    print("\n[TRAIN] Starting CNN-LSTM training...")
     history = model.fit(
         X_train, y_train,
         validation_data=(X_val, y_val),
@@ -145,7 +227,7 @@ def train():
     test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
     print(f"\n[EVAL] Test Accuracy: {test_acc:.4f} | Test Loss: {test_loss:.4f}")
 
-    # Save models
+    # Save models (keep filename as dynamic_lstm.h5 for backend compatibility)
     model.save(str(MODEL_DIR / "dynamic_lstm.h5"))
     model.save(str(BACKEND_MODEL_DIR / "dynamic_lstm.h5"))
     np.save(str(MODEL_DIR / "label_map_dynamic.npy"), label_map)
@@ -167,7 +249,7 @@ def train():
 
 def plot_training(history, test_acc):
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    fig.suptitle(f"Dynamic LSTM Training (Test Acc: {test_acc:.2%})", fontsize=14, fontweight='bold')
+    fig.suptitle(f"Dynamic CNN-LSTM Training (Test Acc: {test_acc:.2%})", fontsize=14, fontweight='bold')
 
     axes[0].plot(history.history['accuracy'], label='Train Acc', color='steelblue')
     axes[0].plot(history.history['val_accuracy'], label='Val Acc', color='darkorange')
@@ -193,7 +275,7 @@ def plot_confusion_matrix(y_true, y_pred, class_names):
     fig, ax = plt.subplots(figsize=(12, 10))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                 xticklabels=class_names, yticklabels=class_names, ax=ax)
-    ax.set_title("Confusion Matrix — Dynamic ASL Signs", fontsize=14, fontweight='bold')
+    ax.set_title("Confusion Matrix -- Dynamic ASL Signs (CNN-LSTM)", fontsize=14, fontweight='bold')
     ax.set_xlabel("Predicted")
     ax.set_ylabel("True")
     plt.tight_layout()
