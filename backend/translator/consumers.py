@@ -26,7 +26,7 @@ from collections import deque
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-from .ml.mediapipe_utils import get_holistic_model, extract_static_keypoints, extract_keypoints
+from .ml.mediapipe_utils import get_holistic_model, extract_static_keypoints_enhanced, extract_keypoints
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +155,7 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
         has_hand = results.right_hand_landmarks is not None or results.left_hand_landmarks is not None
 
         if self.mode == "static":
-            keypoints = extract_static_keypoints(results, image_shape=frame.shape)
+            keypoints = extract_static_keypoints_enhanced(results, image_shape=frame.shape)
             prediction = predictor.predict_static(keypoints)
             return {
                 "type": "prediction",

@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import "./VideoFeed.css";
 
 const FRAME_INTERVAL_MS = 100;  // 10 FPS — balance between latency and CPU
 const JPEG_QUALITY = 0.7;       // Reduce size for WS throughput
@@ -181,62 +182,6 @@ export default function VideoFeed({ sendMessage, canSendFrame, wsStatus, isCaptu
         </div>
       )}
 
-      <style>{`
-        .video-feed-wrapper {
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .video-status-row {
-          display: flex;
-          gap: 8px;
-          align-items: center;
-          flex-wrap: wrap;
-        }
-        .video-container {
-          position: relative;
-          aspect-ratio: 4/3;
-          border-radius: 16px;
-          overflow: hidden;
-          background: #0a0e1a;
-          border: 1px solid rgba(255,255,255,0.08);
-          box-shadow: 0 0 0 1px rgba(99,220,219,0.1), 0 8px 32px rgba(0,0,0,0.5);
-        }
-        .webcam-video {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
-        }
-        .camera-error {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 12px;
-          height: 100%;
-          color: #8b949e;
-          padding: 20px;
-          text-align: center;
-        }
-        .capture-frame-overlay {
-          position: absolute;
-          inset: 0;
-          pointer-events: none;
-        }
-        .corner {
-          position: absolute;
-          width: 20px;
-          height: 20px;
-          border-color: #63dcdb;
-          border-style: solid;
-          opacity: 0.8;
-        }
-        .corner.tl { top: 12px; left: 12px; border-width: 2px 0 0 2px; border-radius: 4px 0 0 0; }
-        .corner.tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; border-radius: 0 4px 0 0; }
-        .corner.bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; border-radius: 0 0 0 4px; }
-        .corner.br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; border-radius: 0 0 4px 0; }
-      `}</style>
     </div>
   );
 }

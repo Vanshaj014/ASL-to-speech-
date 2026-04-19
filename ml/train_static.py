@@ -2,7 +2,7 @@
 train_static.py
 ---------------
 Trains an MLP classifier for static ASL signs (A-Z fingerspelling).
-Input: 63 features (21 hand landmarks × xyz)
+Input: 87 features (63 raw landmarks + 15 joint angles + 5 extension states + 4 spread distances)
 Output: 26 classes (A-Z)
 
 USAGE:
@@ -17,11 +17,16 @@ import os
 import sys
 from pathlib import Path
 
+# Ensure ml/ is on the path so mediapipe_utils is importable
+sys.path.insert(0, str(Path(__file__).parent))
+from mediapipe_utils import FINGER_INDICES, FINGERTIP_INDICES, _angle_between
+
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelBinarizer
+from sklearn.utils.class_weight import compute_class_weight
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, classification_report
@@ -45,7 +50,7 @@ def load_data():
     return X, y, label_map
 
 
-def build_model(num_classes: int, input_size: int = 63) -> keras.Model:
+def build_model(num_classes: int, input_size: int = 87) -> keras.Model:
     model = keras.Sequential([
         layers.Input(shape=(input_size,)),
         layers.Dense(256, activation='relu'),
@@ -63,42 +68,72 @@ def build_model(num_classes: int, input_size: int = 63) -> keras.Model:
 
 def augment_landmarks(X, y):
     """
-    Apply geometric noise (rotation and jitter) to 3D landmarks to simulate 
-    different webcam angles and distances. Multiplies training data size.
+    Apply geometric noise (rotation and jitter) to the raw coordinate portion of the
+    87-feature vector to simulate different webcam angles and distances.
+    The derived features (angles, extension, spread) are recomputed from augmented coords.
+    Multiplies training data size 3x.
     """
     print("[INFO] Augmenting data to improve real-world robustness...")
     X_aug = []
     y_aug = []
-    
+
     for i in range(len(X)):
-        # Original
+        # Original sample
         X_aug.append(X[i])
         y_aug.append(y[i])
-        
-        # We know each X[i] is 63 floats (21 points * 3 coords)
-        pts = X[i].reshape(21, 3)
-        
-        # 1. Subtle Jitter & Scale (simulate hand distance)
-        scale = np.random.uniform(0.9, 1.1)
-        noise = np.random.normal(0, 0.015, size=pts.shape)
-        pts_jitter = (pts * scale) + noise
-        X_aug.append(pts_jitter.flatten())
-        y_aug.append(y[i])
-        
-        # 2. Rotation around Z-axis (simulate tilted hand in screen plane)
-        theta = np.radians(np.random.uniform(-20, 20))
-        c, s = np.cos(theta), np.sin(theta)
-        rot_matrix = np.array([
-            [c, -s, 0],
-            [s,  c, 0],
-            [0,  0, 1]
-        ])
-        pts_rot = np.dot(pts, rot_matrix.T)
-        X_aug.append(pts_rot.flatten())
-        y_aug.append(y[i])
+
+        # Extract raw 63-feature coordinate portion only
+        pts = X[i][:63].reshape(21, 3)
+
+        for pts_aug in _generate_augmented_pts(pts):
+            derived = _compute_derived_features(pts_aug)
+            X_aug.append(np.concatenate([pts_aug.flatten(), derived]))
+            y_aug.append(y[i])
 
     print(f"[INFO] Augmented data: {len(X)} -> {len(X_aug)} samples")
     return np.array(X_aug), np.array(y_aug)
+
+
+def _generate_augmented_pts(pts):
+    """Generate augmented versions of a (21, 3) landmark array."""
+    # 1. Jitter + Scale
+    scale = np.random.uniform(0.9, 1.1)
+    noise = np.random.normal(0, 0.015, size=pts.shape)
+    yield (pts * scale) + noise
+
+    # 2. Z-axis rotation
+    theta = np.radians(np.random.uniform(-20, 20))
+    c, s = np.cos(theta), np.sin(theta)
+    rot = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+    yield np.dot(pts, rot.T)
+
+
+def _compute_derived_features(coords_norm):
+    """Compute the 24 derived features (angles + extension + spread) from (21, 3) coords."""
+    joint_angles = []
+    for finger in FINGER_INDICES:
+        mcp, pip, dip, tip = finger
+        v1 = coords_norm[mcp] - coords_norm[0]
+        v2 = coords_norm[pip] - coords_norm[mcp]
+        joint_angles.append(_angle_between(v1, v2))
+        v1 = coords_norm[mcp] - coords_norm[pip]
+        v2 = coords_norm[dip] - coords_norm[pip]
+        joint_angles.append(_angle_between(v1, v2))
+        v1 = coords_norm[pip] - coords_norm[dip]
+        v2 = coords_norm[tip] - coords_norm[dip]
+        joint_angles.append(_angle_between(v1, v2))
+
+    extension_states = []
+    for finger in FINGER_INDICES:
+        mcp, pip, dip, tip = finger
+        extension_states.append(1.0 if np.linalg.norm(coords_norm[tip]) > np.linalg.norm(coords_norm[pip]) else 0.0)
+
+    spread_distances = []
+    for i in range(len(FINGERTIP_INDICES) - 1):
+        t1, t2 = FINGERTIP_INDICES[i], FINGERTIP_INDICES[i + 1]
+        spread_distances.append(float(np.linalg.norm(coords_norm[t1] - coords_norm[t2])))
+
+    return np.array(joint_angles + extension_states + spread_distances, dtype=np.float32)
 
 
 def train():
@@ -118,6 +153,21 @@ def train():
     X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.50, random_state=42)
 
     print(f"[INFO] Train: {len(X_train)} | Val: {len(X_val)} | Test: {len(X_test)}")
+
+    # Compute class weights to fix M/N imbalance
+    # Underrepresented letters (like M=282, N=166) will have higher weights
+    # so the model is penalised more heavily for getting them wrong.
+    y_train_int = np.argmax(y_train, axis=1)
+    class_weights_arr = compute_class_weight(
+        class_weight='balanced',
+        classes=np.arange(num_classes),
+        y=y_train_int
+    )
+    class_weight_dict = {i: w for i, w in enumerate(class_weights_arr)}
+    print(f"[INFO] Class weights computed (higher = more penalised):")
+    for i, w in class_weight_dict.items():
+        if w > 1.3:
+            print(f"  {label_map[i]}: {w:.2f}  <-- underrepresented")
 
     # Build model
     model = build_model(num_classes)
@@ -148,6 +198,7 @@ def train():
         epochs=100,
         batch_size=64,
         callbacks=callbacks,
+        class_weight=class_weight_dict,  # Compensate for M/N imbalance
         verbose=1
     )
 

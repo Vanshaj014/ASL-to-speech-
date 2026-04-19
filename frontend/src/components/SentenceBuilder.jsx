@@ -5,7 +5,7 @@
  * Provides clear, delete-last-word, copy, and TTS trigger buttons.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 
 const SPEAK_URL = `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/api/tts/`;
 const MIN_CONFIDENCE_TO_ADD = 0.82;
@@ -16,6 +16,9 @@ export default function SentenceBuilder({ prediction, onSentenceChange }) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [copied, setCopied] = useState(false);
   const lastAddedRef = useRef({ sign: null, time: 0 });
+  // Stable ref prevents onSentenceChange from causing infinite effect re-runs
+  const onSentenceChangeRef = useRef(onSentenceChange);
+  useEffect(() => { onSentenceChangeRef.current = onSentenceChange; }, [onSentenceChange]);
 
   // Auto-add confirmed predictions to sentence
   useEffect(() => {
@@ -35,8 +38,8 @@ export default function SentenceBuilder({ prediction, onSentenceChange }) {
   }, [prediction]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    onSentenceChange?.(words.join(" "));
-  }, [words, onSentenceChange]);
+    onSentenceChangeRef.current?.(words.join(" "));
+  }, [words]); // Safe: uses stable ref, no dependency on onSentenceChange
 
   const sentence = words.join(" ");
 
@@ -56,9 +59,21 @@ export default function SentenceBuilder({ prediction, onSentenceChange }) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleSpeak = async () => {
+  const handleSpeak = useCallback(async () => {
     if (!sentence || isSpeaking) return;
     setIsSpeaking(true);
+
+    const speakWithBrowserTTS = (text) => {
+      window.speechSynthesis.cancel(); // Stop any pending speech
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      // Reset state accurately when speech finishes (not on a fixed timer)
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    };
+
     try {
       const resp = await fetch(SPEAK_URL, {
         method: "POST",
@@ -66,17 +81,19 @@ export default function SentenceBuilder({ prediction, onSentenceChange }) {
         body: JSON.stringify({ text: sentence }),
       });
       const data = await resp.json();
-      if (!data.success) console.warn("[TTS] Server TTS failed, using browser TTS");
+      if (data.success) {
+        // Server handled TTS — reset immediately, no need to wait
+        setIsSpeaking(false);
+      } else {
+        // Server TTS failed — fall back to browser
+        console.warn("[TTS] Server TTS failed, using browser TTS");
+        speakWithBrowserTTS(sentence);
+      }
     } catch {
-      // Fallback: browser Web Speech API
-      const utterance = new SpeechSynthesisUtterance(sentence);
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-      window.speechSynthesis.speak(utterance);
-    } finally {
-      setTimeout(() => setIsSpeaking(false), 2000);
+      // Network error — fall back to browser TTS
+      speakWithBrowserTTS(sentence);
     }
-  };
+  }, [sentence, isSpeaking]);
 
   const handleAddSpace = () => {
     setWords((prev) => {

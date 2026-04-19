@@ -1,6 +1,7 @@
 from django.http import JsonResponse
 from rest_framework import generics, status
 from rest_framework.decorators import api_view
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 from django.views.decorators.http import require_http_methods
 
@@ -45,11 +46,15 @@ def log_prediction(request):
 class SessionListCreateView(generics.ListCreateAPIView):
     queryset = TranslationSession.objects.all()[:50]
     serializer_class = TranslationSessionSerializer
+    # Restrict: only authenticated users can list/create sessions
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
 
 class SessionDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = TranslationSession.objects.all()
     serializer_class = TranslationSessionSerializer
+    # Restrict: only authenticated users can modify/delete sessions
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
 
 TTS_MAX_CHARS = 500  # Prevent abuse via very long TTS requests

@@ -55,12 +55,17 @@ export function useWebSocket(onMessage) {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "pong") return; // Ignore heartbeat responses
-        
+
         // Acknowledge frame response to relieve backpressure
         if (data.type === "prediction" || data.type === "buffering" || data.type === "error") {
-            pendingFramesRef.current = Math.max(0, pendingFramesRef.current - 1);
+          pendingFramesRef.current = Math.max(0, pendingFramesRef.current - 1);
         }
-        
+
+        // Mode switch: server discards any in-flight frame, reset counter fully
+        if (data.type === "mode_changed") {
+          pendingFramesRef.current = 0;
+        }
+
         if (onMessage) onMessage(data);
       } catch (e) {
         console.error("[WS] Failed to parse message:", e);

@@ -76,7 +76,45 @@ export default function PredictionDisplay({ prediction, mode, isCapturing, buffe
               {displaySign.sign.toUpperCase()}
             </div>
             <ConfidenceBar value={displaySign.confidence} />
+            {displaySign.agreement != null && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, justifyContent: "center" }}>
+                <span className="text-xs text-muted">Stability</span>
+                <div style={{
+                  width: 80, height: 4, borderRadius: 2,
+                  background: "var(--bg-element)", overflow: "hidden"
+                }}>
+                  <div style={{
+                    width: `${Math.round((displaySign.agreement || 0) * 100)}%`,
+                    height: "100%", borderRadius: 2,
+                    background: displaySign.agreement >= 0.7 ? "var(--accent-green)" : "var(--accent-amber)",
+                    transition: "width 0.3s ease"
+                  }} />
+                </div>
+                <span className="text-xs mono" style={{
+                  color: displaySign.agreement >= 0.7 ? "var(--accent-green)" : "var(--accent-amber)",
+                  fontWeight: 600
+                }}>
+                  {Math.round((displaySign.agreement || 0) * 100)}%
+                </span>
+              </div>
+            )}
           </>
+        ) : prediction?.stabilizing ? (
+          <div style={{ textAlign: "center" }}>
+            <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 8 }}>
+              {[0, 1, 2].map((i) => (
+                <span
+                  key={i}
+                  style={{
+                    width: 8, height: 8, borderRadius: "50%",
+                    background: "var(--accent-amber)",
+                    animation: `pulseDot 1.2s ease-in-out ${i * 0.2}s infinite`
+                  }}
+                />
+              ))}
+            </div>
+            <p className="text-muted text-sm">Stabilizing prediction…</p>
+          </div>
         ) : prediction?.no_hand ? (
           <div style={{ textAlign: "center" }}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5" style={{ marginBottom: 8 }}>

@@ -71,14 +71,14 @@ export default function App() {
         {/* ─── Header ─────────────────────────────────────── */}
         <header className="app-header">
           <div className="header-brand">
-            <div className="brand-logo" aria-hidden="true" style={{ background: "var(--bg-element)", border: "1px solid var(--border)", boxShadow: "none" }}>
-              <svg viewBox="0 0 36 36" fill="none" width="28" height="28">
-                <path d="M14 9v6M14 9c0-1.1.9-2 2-2s2 .9 2 2v6M18 9c0-1.1.9-2 2-2s2 .9 2 2v6M22 11c0-1.1.9-2 2-2s2 .9 2 2v7a8 8 0 01-8 8h-2a6 6 0 01-6-6v-4M10 15v4" stroke="var(--text-primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            <div className="brand-logo" aria-hidden="true">
+              <svg viewBox="0 0 36 36" fill="none" width="26" height="26">
+                <path d="M14 9v6M14 9c0-1.1.9-2 2-2s2 .9 2 2v6M18 9c0-1.1.9-2 2-2s2 .9 2 2v6M22 11c0-1.1.9-2 2-2s2 .9 2 2v7a8 8 0 01-8 8h-2a6 6 0 01-6-6v-4M10 15v4" stroke="var(--accent-cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
               </svg>
             </div>
             <div>
-              <h1 className="brand-title">SignSpeak <span className="text-accent">AI</span></h1>
-              <p className="brand-sub">Real-Time ASL Sign Language Translator</p>
+              <h1 className="brand-title">SignSpeak AI</h1>
+              <p className="brand-sub">Real-Time ASL Translator</p>
             </div>
           </div>
 

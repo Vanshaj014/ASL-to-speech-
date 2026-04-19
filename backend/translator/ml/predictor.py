@@ -22,11 +22,13 @@ logger = logging.getLogger(__name__)
 MODEL_DIR = Path(__file__).parent / "models"
 
 # Prediction confidence thresholds
-STATIC_THRESHOLD = 0.85
-DYNAMIC_THRESHOLD = 0.80
+STATIC_THRESHOLD = 0.70       # Minimum raw model confidence to consider
+DYNAMIC_THRESHOLD = 0.75      # Minimum raw model confidence for dynamic
 
-# Smoothing: keep last N predictions and use majority vote
-SMOOTHING_WINDOW = 5
+# Majority voting: collect N frames and only emit the dominant prediction
+SMOOTHING_WINDOW = 7          # Number of recent predictions to track
+MIN_AGREEMENT = 3             # Minimum votes for the winner to be emitted
+MIN_AGREEMENT_RATIO = 0.42    # Minimum fraction of window that must agree
 
 
 class ASLPredictor:
@@ -66,30 +68,34 @@ class ASLPredictor:
         self._load_models()
 
     def _load_models(self):
-        """Load TF models from the models directory."""
-        # Static model
-        static_path = MODEL_DIR / "static_mlp.h5"
+        """Load TF models from the models directory, preferring .keras over .h5."""
+        # Static model — prefer .keras (modern), fall back to .h5 (legacy)
+        static_path = MODEL_DIR / "static_mlp_best.keras"
+        if not static_path.exists():
+            static_path = MODEL_DIR / "static_mlp.h5"  # legacy fallback
         static_labels = MODEL_DIR / "label_map_static.npy"
 
         if static_path.exists() and static_labels.exists():
             try:
                 self.static_model = tf.keras.models.load_model(str(static_path))
                 self.static_label_map = np.load(str(static_labels), allow_pickle=True).item()
-                logger.info(f"[PREDICTOR] Static model loaded: {len(self.static_label_map)} classes")
+                logger.info(f"[PREDICTOR] Static model loaded ({static_path.suffix}): {len(self.static_label_map)} classes")
             except Exception as e:
                 logger.error(f"[PREDICTOR] Failed to load static model: {e}")
         else:
             logger.warning(f"[PREDICTOR] Static model not found at {static_path}. Train it first.")
 
-        # Dynamic model
-        dynamic_path = MODEL_DIR / "dynamic_lstm.h5"
+        # Dynamic model — prefer .keras (modern), fall back to .h5 (legacy)
+        dynamic_path = MODEL_DIR / "dynamic_cnn_lstm_best.keras"
+        if not dynamic_path.exists():
+            dynamic_path = MODEL_DIR / "dynamic_lstm.h5"  # legacy fallback
         dynamic_labels = MODEL_DIR / "label_map_dynamic.npy"
 
         if dynamic_path.exists() and dynamic_labels.exists():
             try:
                 self.dynamic_model = tf.keras.models.load_model(str(dynamic_path))
                 self.dynamic_label_map = np.load(str(dynamic_labels), allow_pickle=True).item()
-                logger.info(f"[PREDICTOR] Dynamic model loaded: {len(self.dynamic_label_map)} classes")
+                logger.info(f"[PREDICTOR] Dynamic model loaded ({dynamic_path.suffix}): {len(self.dynamic_label_map)} classes")
             except Exception as e:
                 logger.error(f"[PREDICTOR] Failed to load dynamic model: {e}")
         else:
@@ -101,19 +107,21 @@ class ASLPredictor:
     def predict_static(self, keypoints: np.ndarray) -> dict:
         """
         Predict a static ASL letter from a 63-feature landmark vector.
+        Uses majority voting across a sliding window to eliminate flickering.
         Returns: { 'sign': 'A', 'confidence': 0.97, 'top3': [...] }
         """
         if self.static_model is None:
             return {"sign": "?", "confidence": 0.0, "top3": [], "error": "Static model not loaded"}
 
-        if keypoints.shape != (63,):
-            return {"sign": "?", "confidence": 0.0, "top3": [], "error": f"Bad shape: {keypoints.shape}"}
+        if keypoints.shape != (87,):
+            return {"sign": "?", "confidence": 0.0, "top3": [], "error": f"Bad shape: {keypoints.shape}, expected (87,)"}
+
+        # Check if hand is detected (non-zero keypoints)
+        if np.all(keypoints == 0):
+            self.static_buffer.clear()  # Reset voting buffer when hand disappears
+            return {"sign": None, "confidence": 0.0, "top3": [], "no_hand": True}
 
         with self._model_lock:
-            # Check if hand is detected (non-zero keypoints)
-            if np.all(keypoints == 0):
-                return {"sign": None, "confidence": 0.0, "top3": [], "no_hand": True}
-
             x = keypoints.reshape(1, -1)
             probs = self.static_model.predict(x, verbose=0)[0]
 
@@ -124,23 +132,42 @@ class ASLPredictor:
         ]
 
         best_idx = top_idx[0]
-        best_conf = float(probs[best_idx])
-        best_sign = self.static_label_map.get(best_idx, "?")
+        raw_conf = float(probs[best_idx])
+        raw_sign = self.static_label_map.get(best_idx, "?")
 
-        # Smoothing: only emit if consistent across buffer
-        self.static_buffer.append(best_sign)
-        if len(self.static_buffer) == SMOOTHING_WINDOW:
-            most_common = max(set(self.static_buffer), key=list(self.static_buffer).count)
-            smoothed_conf = list(self.static_buffer).count(most_common) / len(self.static_buffer)
-            if most_common == best_sign:
-                best_conf = max(best_conf, smoothed_conf)
+        # --- Gate 1: Raw confidence must clear the minimum threshold ---
+        if raw_conf < STATIC_THRESHOLD:
+            self.static_buffer.append(None)  # Track low-confidence frames too
+            return {"sign": None, "confidence": raw_conf, "top3": top3, "below_threshold": True}
 
-        if best_conf < STATIC_THRESHOLD:
-            return {"sign": None, "confidence": best_conf, "top3": top3, "below_threshold": True}
+        # --- Gate 2: Majority voting across the sliding window ---
+        self.static_buffer.append(raw_sign)
+
+        # Count votes for each sign in the buffer
+        buffer_list = [s for s in self.static_buffer if s is not None]
+        if len(buffer_list) < MIN_AGREEMENT:
+            return {"sign": None, "confidence": raw_conf, "top3": top3, "stabilizing": True}
+
+        vote_counts = {}
+        for s in buffer_list:
+            vote_counts[s] = vote_counts.get(s, 0) + 1
+
+        winner = max(vote_counts, key=vote_counts.get)
+        winner_votes = vote_counts[winner]
+        agreement_ratio = winner_votes / len(self.static_buffer)
+
+        # Only emit if the winner has enough votes AND enough ratio
+        if winner_votes < MIN_AGREEMENT or agreement_ratio < MIN_AGREEMENT_RATIO:
+            return {"sign": None, "confidence": raw_conf, "top3": top3, "below_threshold": True}
+
+        # Blend raw model confidence with voting agreement for a robust score
+        blended_conf = (raw_conf * 0.6) + (agreement_ratio * 0.4)
 
         return {
-            "sign": best_sign,
-            "confidence": best_conf,
+            "sign": winner,
+            "confidence": round(blended_conf, 4),
+            "raw_confidence": round(raw_conf, 4),
+            "agreement": round(agreement_ratio, 4),
             "top3": top3,
             "model": "static"
         }

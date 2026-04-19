@@ -23,8 +23,22 @@ FACE_FEATURE_SIZE = NUM_FACE_LANDMARKS * 3   # 1404
 # For the translator we only use HANDS + POSE (skip face for speed/simplicity)
 # Static model input: 63 (right hand) = 63 features
 # Dynamic model input per frame: 63 (right) + 63 (left) + 132 (pose) = 258 features
-STATIC_FEATURE_SIZE = HAND_FEATURE_SIZE           # 63
+STATIC_FEATURE_SIZE = HAND_FEATURE_SIZE           # 63 — raw landmarks only
 DYNAMIC_FRAME_SIZE = HAND_FEATURE_SIZE * 2 + POSE_FEATURE_SIZE  # 258
+
+# Enhanced static features: 63 raw + 15 joint angles + 5 extension states + 4 spread = 87
+STATIC_ENHANCED_FEATURE_SIZE = STATIC_FEATURE_SIZE + 15 + 5 + 4  # 87
+
+# MediaPipe hand landmark indices for each finger segment
+# Each finger: [MCP, PIP, DIP, TIP]
+FINGER_INDICES = [
+    [1, 2, 3, 4],    # Thumb
+    [5, 6, 7, 8],    # Index
+    [9, 10, 11, 12], # Middle
+    [13, 14, 15, 16],# Ring
+    [17, 18, 19, 20] # Pinky
+]
+FINGERTIP_INDICES = [4, 8, 12, 16, 20]  # Tips of all 5 fingers
 
 
 def extract_keypoints(results):
@@ -106,6 +120,113 @@ def extract_static_keypoints(results, image_shape=None):
         return coords.flatten()
         
     return np.zeros(STATIC_FEATURE_SIZE)
+
+
+def _angle_between(v1: np.ndarray, v2: np.ndarray) -> float:
+    """
+    Compute the angle in radians between two 3D vectors.
+    Returns a value in [0, pi].
+    """
+    n1 = np.linalg.norm(v1)
+    n2 = np.linalg.norm(v2)
+    if n1 < 1e-9 or n2 < 1e-9:
+        return 0.0
+    cos_angle = np.clip(np.dot(v1, v2) / (n1 * n2), -1.0, 1.0)
+    return float(np.arccos(cos_angle))
+
+
+def extract_static_keypoints_enhanced(results, image_shape=None) -> np.ndarray:
+    """
+    Enhanced feature extraction for static sign classification.
+    Returns a 1D array of shape (87,) consisting of:
+      - 63: Raw wrist-relative, normalized landmark coordinates (x, y, z)
+      - 15: Joint bend angles at MCP, PIP, DIP for all 5 fingers (in radians)
+      - 5:  Finger extension states (1 = extended, 0 = curled) per finger
+      - 4:  Adjacent fingertip spread distances (index-middle, middle-ring, etc.)
+
+    These derived geometry features are scale-invariant and position-invariant,
+    making signs like A, S, and E much easier for the model to discriminate.
+    """
+    landmarks = None
+    is_left = False
+
+    if getattr(results, "right_hand_landmarks", None):
+        landmarks = results.right_hand_landmarks.landmark
+    elif getattr(results, "left_hand_landmarks", None):
+        landmarks = results.left_hand_landmarks.landmark
+        is_left = True
+    elif getattr(results, "multi_hand_landmarks", None):
+        landmarks = results.multi_hand_landmarks[0].landmark
+
+    if landmarks is None:
+        return np.zeros(STATIC_ENHANCED_FEATURE_SIZE)
+
+    # --- Build coordinate array ---
+    wrist = landmarks[0]
+    x_scale = 1.0
+    if image_shape is not None:
+        h, w = image_shape[:2]
+        x_scale = w / h
+
+    coords = []
+    for lm in landmarks:
+        x_rel = (lm.x - wrist.x) * x_scale
+        y_rel = (lm.y - wrist.y)
+        z_rel = (lm.z - wrist.z) * x_scale
+        if is_left:
+            x_rel = -x_rel
+        coords.append([x_rel, y_rel, z_rel])
+
+    coords = np.array(coords, dtype=np.float32)  # (21, 3)
+    scale = np.max(np.abs(coords)) + 1e-6
+    coords_norm = coords / scale  # Normalized raw features (base 63)
+
+    # --- Feature 1: Joint bend angles (15 features) ---
+    # For each of the 5 fingers, compute the bend angle at MCP, PIP, DIP joints
+    # angle at PIP = angle between vector(MCP->PIP) and vector(PIP->DIP)
+    joint_angles = []
+    for finger in FINGER_INDICES:
+        mcp, pip, dip, tip = finger
+        # MCP angle: wrist -> MCP -> PIP
+        v1 = coords_norm[mcp] - coords_norm[0]   # wrist to MCP
+        v2 = coords_norm[pip] - coords_norm[mcp]  # MCP to PIP
+        joint_angles.append(_angle_between(v1, v2))
+        # PIP angle: MCP -> PIP -> DIP
+        v1 = coords_norm[mcp] - coords_norm[pip]
+        v2 = coords_norm[dip] - coords_norm[pip]
+        joint_angles.append(_angle_between(v1, v2))
+        # DIP angle: PIP -> DIP -> TIP
+        v1 = coords_norm[pip] - coords_norm[dip]
+        v2 = coords_norm[tip] - coords_norm[dip]
+        joint_angles.append(_angle_between(v1, v2))
+
+    joint_angles = np.array(joint_angles, dtype=np.float32)  # (15,)
+
+    # --- Feature 2: Finger extension states (5 features) ---
+    # A finger is "extended" if its tip is farther from the wrist than its PIP joint.
+    # Measured using Euclidean distance from the wrist landmark.
+    extension_states = []
+    for finger in FINGER_INDICES:
+        mcp, pip, dip, tip = finger
+        dist_tip = np.linalg.norm(coords_norm[tip])
+        dist_pip = np.linalg.norm(coords_norm[pip])
+        extension_states.append(1.0 if dist_tip > dist_pip else 0.0)
+
+    extension_states = np.array(extension_states, dtype=np.float32)  # (5,)
+
+    # --- Feature 3: Adjacent fingertip spread distances (4 features) ---
+    # Captures how spread apart adjacent fingertips are (important for signs like V, 3, etc.)
+    spread_distances = []
+    for i in range(len(FINGERTIP_INDICES) - 1):
+        t1 = FINGERTIP_INDICES[i]
+        t2 = FINGERTIP_INDICES[i + 1]
+        dist = np.linalg.norm(coords_norm[t1] - coords_norm[t2])
+        spread_distances.append(dist)
+
+    spread_distances = np.array(spread_distances, dtype=np.float32)  # (4,)
+
+    # Concatenate all features: 63 + 15 + 5 + 4 = 87
+    return np.concatenate([coords_norm.flatten(), joint_angles, extension_states, spread_distances])
 
 
 def normalize_keypoints(keypoints):

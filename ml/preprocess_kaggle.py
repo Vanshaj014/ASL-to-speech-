@@ -14,7 +14,7 @@ USAGE:
   2. Run: python ml/preprocess_kaggle.py
 
 OUTPUT:
-  ml/data/processed/X_static.npy  — shape (N, 63)
+  ml/data/processed/X_static.npy  — shape (N, 87)  [enhanced features]
   ml/data/processed/y_static.npy  — shape (N,) integer labels
   ml/data/processed/label_map.npy — dict mapping index -> letter
 """
@@ -28,7 +28,7 @@ from pathlib import Path
 
 # Add ml/ dir to path so we can import mediapipe_utils
 sys.path.insert(0, str(Path(__file__).parent))
-from mediapipe_utils import get_holistic_model, extract_static_keypoints
+from mediapipe_utils import get_holistic_model, extract_static_keypoints_enhanced
 
 # Paths
 RAW_DIR = Path(__file__).parent / "data" / "raw" / "kaggle_asl" / "asl_alphabet_train"
@@ -50,10 +50,13 @@ def process_dataset():
     print(f"[INFO] Processing dataset from: {RAW_DIR}")
     print(f"[INFO] Classes: {VALID_CLASSES}")
 
+    # Use a very low detection confidence for preprocessing:
+    # M and N signs look like closed fists with no finger extension,
+    # making them genuinely hard for MediaPipe to detect at high confidence thresholds.
     mp_hands = mp.solutions.hands.Hands(
-        static_image_mode=True, 
-        max_num_hands=1, 
-        min_detection_confidence=0.5
+        static_image_mode=True,
+        max_num_hands=1,
+        min_detection_confidence=0.3  # Lowered from 0.5 to capture M, N, S, A shapes
     )
 
     X, y = [], []
@@ -76,29 +79,50 @@ def process_dataset():
                 skipped += 1
                 continue
 
-            # Convert BGR to RGB for MediaPipe
+            # Attempt 1: Standard detection at original size
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             results = mp_hands.process(img_rgb)
 
-            # Check if any hands were detected
+            # Attempt 2: Multi-scale retry (M, N need bigger context to detect)
+            if not results.multi_hand_landmarks:
+                for scale in [1.5, 2.0, 0.75]:
+                    h, w = img.shape[:2]
+                    resized = cv2.resize(img, (int(w * scale), int(h * scale)))
+                    img_rgb_scaled = cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+                    results = mp_hands.process(img_rgb_scaled)
+                    if results.multi_hand_landmarks:
+                        img = resized  # Use the resized image for feature extraction
+                        img_rgb = img_rgb_scaled
+                        break
+
+            # Attempt 3: Brightness boost (some M/N images are slightly darker)
+            if not results.multi_hand_landmarks:
+                bright = cv2.convertScaleAbs(img, alpha=1.3, beta=30)
+                img_rgb_bright = cv2.cvtColor(bright, cv2.COLOR_BGR2RGB)
+                results = mp_hands.process(img_rgb_bright)
+                if results.multi_hand_landmarks:
+                    img = bright
+                    img_rgb = img_rgb_bright
+
+            # Skip if hand still not detected after all attempts
             if not results.multi_hand_landmarks:
                 skipped += 1
                 continue
 
-            # Extract the first hand
-            landmarks = results.multi_hand_landmarks[0].landmark
-            wrist = landmarks[0]
-            
-            # Normalize relative to wrist and scale
-            coords = np.array([[lm.x - wrist.x, lm.y - wrist.y, lm.z - wrist.z] for lm in landmarks])
-            scale = np.max(np.abs(coords)) + 1e-6
-            keypoints = (coords / scale).flatten()
+            # Extract enhanced 87-feature vector (joints, angles, extension, spread)
+            keypoints = extract_static_keypoints_enhanced(results, image_shape=img.shape)
+            if np.all(keypoints == 0):
+                skipped += 1
+                continue
 
             X.append(keypoints)
             y.append(class_to_idx[letter])
             processed += 1
 
-        print(f"  [{letter}] Processed: {processed}, Skipped (no hand): {skipped}")
+        if skipped > 100:
+            print(f"  [{letter}] Processed: {processed}, Skipped (no hand): {skipped}  ⚠️  High skip rate")
+        else:
+            print(f"  [{letter}] Processed: {processed}, Skipped (no hand): {skipped}")
 
     mp_hands.close()
 
