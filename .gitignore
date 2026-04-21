@@ -59,3 +59,7 @@ Thumbs.db
 # Jupyter
 .ipynb_checkpoints/
 notebooks/.ipynb_checkpoints/
+
+# Local Docs
+progress.md
+
