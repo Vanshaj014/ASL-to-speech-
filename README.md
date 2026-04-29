@@ -9,6 +9,8 @@
 
 - 🧠 **Hybrid AI Engine**: Dual-model architecture using a **MLP** (87-feature, finger-tracking enhanced) for static fingerspelling (A–Z) and a **1D-CNN + LSTM hybrid** for dynamic word gestures.
 - 🖐️ **Advanced Finger Tracking**: Feature vector engineered from raw landmarks to include **15 joint bend angles**, **5 finger extension states**, and **4 fingertip spread distances** — making the model immune to hand size and camera distance variations.
+- 🦴 **Live Skeleton Overlay**: Real-time 21-point hand skeleton drawn directly over the webcam feed, perfectly mirrored and synchronized via tiny WebSocket payloads.
+- 🎨 **Tech Innovation UI**: Immersive, dark-mode design system featuring staggered load animations, glowing elements, and a distinct Space Mono / DM Sans typography pairing.
 - 🎯 **Majority Voting Smoothing**: A 7-frame sliding window voting system with a dual-gate confidence check (raw model threshold + agreement ratio) completely eliminates prediction flickering.
 - ⚡ **Real-Time Streaming**: Ultra-low latency communication via **WebSockets** (Django Channels) with thread-safe background frame decoding.
 - 📐 **Landmark-Based Inference**: Uses **MediaPipe Holistic** to extract 3D joint coordinates, making the system immune to lighting conditions and complex backgrounds.

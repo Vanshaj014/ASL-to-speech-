@@ -26,7 +26,7 @@ from collections import deque
 
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-from .ml.mediapipe_utils import get_holistic_model, extract_static_keypoints_enhanced, extract_keypoints
+from .ml.mediapipe_utils import get_holistic_model, extract_static_keypoints_enhanced, extract_keypoints, serialize_hand_landmarks
 
 logger = logging.getLogger(__name__)
 
@@ -157,16 +157,19 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
         if self.mode == "static":
             keypoints = extract_static_keypoints_enhanced(results, image_shape=frame.shape)
             prediction = predictor.predict_static(keypoints)
+            landmarks = serialize_hand_landmarks(results)
             return {
                 "type": "prediction",
                 "mode": "static",
                 "has_hand": has_hand,
+                "landmarks": landmarks,
                 **prediction
             }
 
         elif self.mode == "dynamic":
             frame_kp = extract_keypoints(results)
             self.frame_sequence.append(frame_kp)
+            landmarks = serialize_hand_landmarks(results)
 
             if len(self.frame_sequence) == SEQUENCE_LENGTH:
                 sequence = np.array(list(self.frame_sequence), dtype=np.float32)
@@ -175,6 +178,7 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
                     "type": "prediction",
                     "mode": "dynamic",
                     "has_hand": has_hand,
+                    "landmarks": landmarks,
                     "buffer_fill": len(self.frame_sequence),
                     **prediction
                 }
@@ -183,6 +187,7 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
                     "type": "buffering",
                     "mode": "dynamic",
                     "has_hand": has_hand,
+                    "landmarks": landmarks,
                     "buffer_fill": len(self.frame_sequence),
                     "buffer_total": SEQUENCE_LENGTH
                 }

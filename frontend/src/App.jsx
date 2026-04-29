@@ -18,6 +18,7 @@ export default function App() {
   const [bufferFill, setBufferFill] = useState(0);
   const [bufferTotal, setBufferTotal] = useState(30);
   const [modelStatus, setModelStatus] = useState({ static_model: false, dynamic_model: false });
+  const [landmarks, setLandmarks] = useState(null);
   const modelStatusLoaded = useRef(false);
 
   // Fetch model status on mount
@@ -36,9 +37,11 @@ export default function App() {
       setPrediction(data);
       setBufferFill(data.buffer_fill || 0);
       setBufferTotal(data.buffer_total || 30);
+      setLandmarks(data.landmarks || null);
     } else if (data.type === "buffering") {
       setBufferFill(data.buffer_fill || 0);
       setBufferTotal(data.buffer_total || 30);
+      setLandmarks(data.landmarks || null);
     }
   }, []);
 
@@ -126,6 +129,7 @@ export default function App() {
                 canSendFrame={canSendFrame}
                 wsStatus={wsStatus}
                 isCapturing={isCapturing}
+                landmarks={landmarks}
               />
 
               {/* Start/Stop capture button */}

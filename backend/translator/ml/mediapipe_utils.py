@@ -249,3 +249,27 @@ def get_holistic_model(static_image_mode=False, min_detection_confidence=0.7,
         min_detection_confidence=min_detection_confidence,
         min_tracking_confidence=min_tracking_confidence
     )
+
+
+def serialize_hand_landmarks(results):
+    """
+    Extract the visible hand's landmarks as a compact list of {x, y} dicts
+    for transmission to the frontend overlay canvas.
+
+    Returns a list of 21 points, each with normalized [0-1] coordinates,
+    or None if no hand is detected.
+
+    Note: x coordinates are in the un-mirrored frame space. The frontend
+    must mirror them (x = 1 - x) before drawing, because the <video>
+    element is rendered with transform: scaleX(-1).
+    """
+    lm_list = None
+    if getattr(results, "right_hand_landmarks", None):
+        lm_list = results.right_hand_landmarks.landmark
+    elif getattr(results, "left_hand_landmarks", None):
+        lm_list = results.left_hand_landmarks.landmark
+
+    if lm_list is None:
+        return None
+
+    return [{"x": round(lm.x, 4), "y": round(lm.y, 4)} for lm in lm_list]
