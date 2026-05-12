@@ -39,7 +39,7 @@ MODEL_DIR.mkdir(exist_ok=True)
 BACKEND_MODEL_DIR = BASE_DIR.parent / "backend" / "translator" / "ml" / "models"
 BACKEND_MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-SEQUENCE_LENGTH = 30
+SEQUENCE_LENGTH = 60  # Must match collect_custom_data.py (~2 seconds at 30fps)
 FRAME_FEATURES = 258  # DYNAMIC_FRAME_SIZE from mediapipe_utils
 
 

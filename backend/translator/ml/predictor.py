@@ -30,6 +30,9 @@ SMOOTHING_WINDOW = 7          # Number of recent predictions to track
 MIN_AGREEMENT = 3             # Minimum votes for the winner to be emitted
 MIN_AGREEMENT_RATIO = 0.42    # Minimum fraction of window that must agree
 
+# Dynamic model sequence length — must match collect_custom_data.py and train_dynamic.py
+SEQUENCE_LENGTH = 60          # Frames per dynamic gesture window (~2 seconds at 30fps)
+
 
 class ASLPredictor:
     """
@@ -180,12 +183,13 @@ class ASLPredictor:
         if self.dynamic_model is None:
             return {"sign": "?", "confidence": 0.0, "top3": [], "error": "Dynamic model not loaded"}
 
-        if sequence.shape != (30, 258):
+        expected_shape = (SEQUENCE_LENGTH, 258)
+        if sequence.shape != expected_shape:
             return {"sign": "?", "confidence": 0.0, "top3": [],
-                    "error": f"Bad shape: {sequence.shape}, expected (30, 258)"}
+                    "error": f"Bad shape: {sequence.shape}, expected {expected_shape}"}
 
         with self._model_lock:
-            x = sequence.reshape(1, 30, 258)
+            x = sequence.reshape(1, SEQUENCE_LENGTH, 258)
             probs = self.dynamic_model.predict(x, verbose=0)[0]
 
         top_idx = np.argsort(probs)[::-1][:3]

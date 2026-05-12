@@ -30,7 +30,7 @@ from .ml.mediapipe_utils import get_holistic_model, extract_static_keypoints_enh
 
 logger = logging.getLogger(__name__)
 
-SEQUENCE_LENGTH = 30       # Frames for dynamic model
+SEQUENCE_LENGTH = 60       # Frames for dynamic model (~2 seconds at 30fps)
 FRAME_FEATURES = 258       # Feature size per frame
 MAX_FRAME_BYTES = 500_000  # 500 KB max per frame — DoS protection
 ALLOWED_MODES = {"static", "dynamic"}  # Whitelist for set_mode

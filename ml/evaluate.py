@@ -29,7 +29,7 @@ DATA_DIR = BASE_DIR / "data" / "processed"
 DYNAMIC_DIR = BASE_DIR / "data" / "raw" / "dynamic"
 MODEL_DIR = BASE_DIR / "models"
 
-SEQUENCE_LENGTH = 30
+SEQUENCE_LENGTH = 60  # Must match collect_custom_data.py (~2 seconds at 30fps)
 FRAME_FEATURES = 258
 
 

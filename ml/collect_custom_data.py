@@ -37,7 +37,7 @@ DYNAMIC_SIGNS = [
     "sorry", "iloveyou", "help", "good", "bad",
     "more", "stop", "eat", "drink", "where"
 ]
-SEQUENCE_LENGTH = 30       # Frames per sequence
+SEQUENCE_LENGTH = 60       # Frames per sequence (~2 seconds at 30fps)
 SEQUENCES_PER_SIGN = 30    # How many sequences to collect per sign
 OUT_DIR = Path(__file__).parent / "data" / "raw" / "dynamic"
 
