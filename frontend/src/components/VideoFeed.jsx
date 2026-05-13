@@ -10,9 +10,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import "./VideoFeed.css";
 
 const FRAME_INTERVAL_MS = 100;  // Target 10 FPS send rate
-const JPEG_QUALITY = 0.75;       // Slightly better quality — offset by smaller canvas
-const CAPTURE_WIDTH  = 320;      // ← KEY FPS FIX: send 320×240 to backend, not 640×480
-const CAPTURE_HEIGHT = 240;      // 4× fewer pixels = 4× faster MediaPipe decode + inference
+const JPEG_QUALITY = 0.6;       // Lower quality = smaller payload = faster transfer
+// NOTE: We send at full video resolution (640×480) because MediaPipe landmark
+// accuracy drops significantly at lower resolutions and the trained model
+// expects landmarks extracted from full-resolution images.
 
 export default function VideoFeed({ sendMessage, canSendFrame, wsStatus, isCapturing, onHandDetected, landmarks }) {
   const videoRef = useRef(null);
@@ -78,13 +79,11 @@ export default function VideoFeed({ sendMessage, canSendFrame, wsStatus, isCaptu
       if (!video || video.readyState < 2) return;
       if (canSendFrame && !canSendFrame()) return; // Backpressure: drop frame if backend hasn't responded
 
-      // Draw at reduced resolution for fast backend processing.
-      // The displayed video is still full-res — only the inference canvas is small.
-      canvas.width  = CAPTURE_WIDTH;
-      canvas.height = CAPTURE_HEIGHT;
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
 
       // Draw original un-mirrored frame to send to backend (matches training dataset)
-      ctx.drawImage(video, 0, 0, CAPTURE_WIDTH, CAPTURE_HEIGHT);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       const frameB64 = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
       sendMessage({ type: "frame", frame: frameB64 });

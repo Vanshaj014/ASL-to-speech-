@@ -19,6 +19,7 @@ Architecture (deployment-friendly):
 import json
 import base64
 import logging
+import time
 import numpy as np
 import cv2
 import asyncio
@@ -30,10 +31,12 @@ from .ml.mediapipe_utils import get_holistic_model, extract_static_keypoints_enh
 
 logger = logging.getLogger(__name__)
 
-SEQUENCE_LENGTH = 60       # Frames for dynamic model (~2 seconds at 30fps)
+SEQUENCE_LENGTH = 60       # Target frames for dynamic model (must match training)
 FRAME_FEATURES = 258       # Feature size per frame
 MAX_FRAME_BYTES = 500_000  # 500 KB max per frame — DoS protection
 ALLOWED_MODES = {"static", "dynamic"}  # Whitelist for set_mode
+CAPTURE_WINDOW_SEC = 2.0   # Time window matching training data (~2s at 30 FPS)
+MIN_FRAMES_FOR_PREDICT = 12  # Minimum frames needed in the window before predicting
 
 
 class TranslatorConsumer(AsyncWebsocketConsumer):
@@ -44,7 +47,10 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.client_id = self.scope.get("client", ("unknown", 0))[0]
         self.mode = "static"  # 'static' or 'dynamic'
-        self.frame_sequence = deque(maxlen=SEQUENCE_LENGTH)
+        # Time-based frame buffer: list of (timestamp, keypoints) tuples
+        # Instead of counting frames, we track time so the 2-second window
+        # always matches training data regardless of actual browser FPS.
+        self.frame_buffer = []
         self.holistic = None
         self._init_mediapipe()
         await self.accept()
@@ -56,13 +62,18 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
         }))
 
     def _init_mediapipe(self):
-        """Initialize MediaPipe Holistic (runs in sync context)."""
+        """Initialize MediaPipe Holistic (runs in sync context).
+        
+        IMPORTANT: These settings MUST match collect_custom_data.py exactly.
+        Any mismatch in model_complexity or confidence thresholds will produce
+        different landmark positions, causing the trained model to fail.
+        """
         try:
             self.holistic = get_holistic_model(
                 static_image_mode=False,
-                model_complexity=0,            # Lite model — 2-3× faster inference
-                min_detection_confidence=0.5,   # Accept detections faster (was 0.7)
-                min_tracking_confidence=0.4     # Cheaper tracking between detections (was 0.5)
+                model_complexity=1,            # Must match training (1=Full)
+                min_detection_confidence=0.7,   # Must match training
+                min_tracking_confidence=0.5     # Must match training
             )
         except Exception as e:
             logger.error(f"[WS] MediaPipe init failed: {e}")
@@ -90,7 +101,7 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
                     }))
                     return
                 self.mode = requested
-                self.frame_sequence.clear()
+                self.frame_buffer = []  # Clear on mode switch
                 await self.send(json.dumps({
                     "type": "mode_changed",
                     "mode": self.mode
@@ -169,18 +180,32 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
 
         elif self.mode == "dynamic":
             frame_kp = extract_keypoints(results)
-            self.frame_sequence.append(frame_kp)
+            now = time.time()
+            self.frame_buffer.append((now, frame_kp))
             landmarks = serialize_hand_landmarks(results)
 
-            if len(self.frame_sequence) == SEQUENCE_LENGTH:
-                sequence = np.array(list(self.frame_sequence), dtype=np.float32)
+            # Evict frames older than the capture window
+            cutoff = now - CAPTURE_WINDOW_SEC
+            self.frame_buffer = [(t, kp) for t, kp in self.frame_buffer if t >= cutoff]
+
+            buffer_duration = self.frame_buffer[-1][0] - self.frame_buffer[0][0] if len(self.frame_buffer) > 1 else 0
+            have_enough = len(self.frame_buffer) >= MIN_FRAMES_FOR_PREDICT and buffer_duration >= (CAPTURE_WINDOW_SEC * 0.8)
+
+            if have_enough:
+                # Resample to exactly SEQUENCE_LENGTH frames via linear interpolation.
+                # This normalizes the temporal density: whether the browser sent
+                # 12 frames or 20 frames over 2 seconds, the model always sees
+                # a 60-frame sequence with the same temporal structure as training.
+                sequence = self._resample_to_length(
+                    [kp for _, kp in self.frame_buffer], SEQUENCE_LENGTH
+                )
                 prediction = predictor.predict_dynamic(sequence)
                 return {
                     "type": "prediction",
                     "mode": "dynamic",
                     "has_hand": has_hand,
                     "landmarks": landmarks,
-                    "buffer_fill": len(self.frame_sequence),
+                    "buffer_fill": SEQUENCE_LENGTH,
                     **prediction
                 }
             else:
@@ -189,8 +214,33 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
                     "mode": "dynamic",
                     "has_hand": has_hand,
                     "landmarks": landmarks,
-                    "buffer_fill": len(self.frame_sequence),
+                    "buffer_fill": int((buffer_duration / CAPTURE_WINDOW_SEC) * SEQUENCE_LENGTH),
                     "buffer_total": SEQUENCE_LENGTH
                 }
 
         return None
+
+    @staticmethod
+    def _resample_to_length(frames, target_len):
+        """
+        Resample a variable-length list of frames to exactly target_len
+        using linear interpolation across all 258 feature channels.
+
+        This is the key fix: training data was captured at 30 FPS (60 frames = 2s),
+        but the browser sends at 6-10 FPS (12-20 frames = 2s). By resampling,
+        the model always sees the same temporal density it was trained on.
+        """
+        current = np.array(frames, dtype=np.float32)  # (N, 258)
+        if len(current) == target_len:
+            return current
+
+        # Generate evenly spaced indices into the original sequence
+        src_indices = np.arange(len(current))
+        dst_indices = np.linspace(0, len(current) - 1, target_len)
+
+        # Interpolate each feature channel independently
+        resampled = np.zeros((target_len, current.shape[1]), dtype=np.float32)
+        for feat in range(current.shape[1]):
+            resampled[:, feat] = np.interp(dst_indices, src_indices, current[:, feat])
+
+        return resampled
