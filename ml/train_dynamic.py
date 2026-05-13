@@ -5,7 +5,7 @@ Trains a hybrid 1D-CNN + LSTM classifier for dynamic ASL signs (common words).
 The CNN layers extract local motion patterns (velocity spikes, finger flicks)
 across short frame windows, while the LSTM interprets their temporal sequence.
 
-Input: sequences of shape (30, 258) — 30 frames × 258 keypoint features
+Input: sequences of shape (60, 258) — 60 frames × 258 keypoint features
 Output: N classes (dynamic signs collected via collect_custom_data.py)
 
 USAGE:
@@ -23,6 +23,7 @@ from pathlib import Path
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
+from tensorflow.keras.regularizers import l2
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
@@ -77,7 +78,7 @@ def load_dynamic_data():
             y.append(class_to_idx[sign_name])
         print(f"  [{sign_name}]: {len(seq_files)} sequences")
 
-    X = np.array(X, dtype=np.float32)  # (N, 30, 258)
+    X = np.array(X, dtype=np.float32)  # (N, 60, 258)
     y = np.array(y, dtype=np.int32)    # (N,)
 
     print(f"\n[INFO] Total sequences: {len(X)}, Shape: {X.shape}")
@@ -133,47 +134,54 @@ def augment_sequences(X, y):
     return X_aug, y_aug
 
 
-def build_cnn_lstm_model(num_classes: int, sequence_length: int = 30,
+def build_cnn_lstm_model(num_classes: int, sequence_length: int = 60,
                          frame_features: int = 258) -> keras.Model:
     """
-    Hybrid 1D-CNN + LSTM architecture for dynamic gesture recognition.
+    Improved Hybrid 1D-CNN + LSTM with L2 regularization and stronger Dropout.
+
+    Key changes vs original:
+      - L2(1e-4) on Conv1D and Dense kernels  → prevents overfitting on small dataset
+      - kernel_size=5 on Block 1  → captures longer 5-frame motion events (was 3)
+      - Dropout 0.5 after LSTM  → stronger regularization of temporal memory
+      - Dropout 0.4 after Dense  → prevents final layer memorization
 
     Pipeline:
-      Input (30, 258)
-        -> Conv1D(64, kernel=3)  -- detect local motion patterns across 3-frame windows
-        -> BatchNorm -> ReLU -> MaxPool(2) -- compress to (15, 64)
-        -> Conv1D(128, kernel=3) -- detect higher-level motion features
-        -> BatchNorm -> ReLU -> MaxPool(2) -- compress to (7, 128)
-        -> LSTM(128)             -- understand temporal sequence meaning
-        -> Dropout(0.4)
+      Input (60, 258)
+        -> Conv1D(64, kernel=5)  -- wider window: 5-frame motion patterns
+        -> BatchNorm -> ReLU -> MaxPool(2) -- compress to (30, 64)
+        -> Conv1D(128, kernel=3) -- higher-level motion features
+        -> BatchNorm -> ReLU -> MaxPool(2) -- compress to (15, 128)
+        -> LSTM(128)             -- temporal sequence understanding
+        -> Dropout(0.5)          -- stronger than before (was 0.4)
         -> Dense(64) -> ReLU
-        -> Dropout(0.3)
+        -> Dropout(0.4)          -- stronger than before (was 0.3)
         -> Dense(num_classes) -> Softmax
     """
+    reg = l2(1e-4)
     model = keras.Sequential([
         layers.Input(shape=(sequence_length, frame_features)),
 
-        # --- 1D CNN Block 1: Local motion pattern extraction ---
-        layers.Conv1D(64, kernel_size=3, padding='same'),
+        # --- 1D CNN Block 1: Wider kernel captures longer temporal patterns ---
+        layers.Conv1D(64, kernel_size=5, padding='same', kernel_regularizer=reg),
         layers.BatchNormalization(),
         layers.Activation('relu'),
-        layers.MaxPool1D(pool_size=2),        # (30, 258) -> (15, 64)
+        layers.MaxPool1D(pool_size=2),        # (60, 258) -> (30, 64)
 
         # --- 1D CNN Block 2: Higher-level motion features ---
-        layers.Conv1D(128, kernel_size=3, padding='same'),
+        layers.Conv1D(128, kernel_size=3, padding='same', kernel_regularizer=reg),
         layers.BatchNormalization(),
         layers.Activation('relu'),
-        layers.MaxPool1D(pool_size=2),        # (15, 64) -> (7, 128)
+        layers.MaxPool1D(pool_size=2),        # (30, 64) -> (15, 128)
 
         # --- LSTM: Temporal sequence understanding ---
         layers.LSTM(128, return_sequences=False, activation='tanh'),
-        layers.Dropout(0.4),
+        layers.Dropout(0.5),                  # Stronger dropout vs original 0.4
 
         # --- Classification head ---
-        layers.Dense(64, activation='relu'),
-        layers.Dropout(0.3),
+        layers.Dense(64, activation='relu', kernel_regularizer=reg),
+        layers.Dropout(0.4),                  # Stronger dropout vs original 0.3
         layers.Dense(num_classes, activation='softmax')
-    ], name="asl_dynamic_cnn_lstm")
+    ], name="asl_dynamic_cnn_lstm_v2")
 
     return model
 
@@ -200,18 +208,18 @@ def train():
     model.summary()
 
     model.compile(
-        optimizer=keras.optimizers.Adam(learning_rate=1e-3),
+        optimizer=keras.optimizers.Adam(learning_rate=5e-4),  # Lower LR for better convergence with L2
         loss='categorical_crossentropy',
         metrics=['accuracy']
     )
 
     callbacks = [
-        keras.callbacks.EarlyStopping(patience=15, restore_best_weights=True, verbose=1),
+        keras.callbacks.EarlyStopping(patience=20, restore_best_weights=True, verbose=1),
         keras.callbacks.ModelCheckpoint(
             str(MODEL_DIR / "dynamic_cnn_lstm_best.keras"),
             save_best_only=True, monitor='val_accuracy', verbose=1
         ),
-        keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=7, min_lr=1e-6, verbose=1),
+        keras.callbacks.ReduceLROnPlateau(factor=0.5, patience=10, min_lr=1e-6, verbose=1),
     ]
 
     print("\n[TRAIN] Starting CNN-LSTM training...")

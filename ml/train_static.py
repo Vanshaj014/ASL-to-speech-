@@ -27,6 +27,7 @@ from tensorflow.keras import layers
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelBinarizer
 from sklearn.utils.class_weight import compute_class_weight
+from tensorflow.keras.regularizers import l2
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix, classification_report
@@ -51,15 +52,21 @@ def load_data():
 
 
 def build_model(num_classes: int, input_size: int = 87) -> keras.Model:
+    """
+    MLP with L2 weight decay on all Dense layers.
+    L2 penalizes large weights, forcing the model to spread knowledge
+    across many features rather than memorizing specific finger positions.
+    """
+    reg = l2(1e-4)  # Small penalty — tight enough to regularize, loose enough not to underfit
     model = keras.Sequential([
         layers.Input(shape=(input_size,)),
-        layers.Dense(256, activation='relu'),
+        layers.Dense(256, activation='relu', kernel_regularizer=reg),
         layers.BatchNormalization(),
         layers.Dropout(0.4),
-        layers.Dense(128, activation='relu'),
+        layers.Dense(128, activation='relu', kernel_regularizer=reg),
         layers.BatchNormalization(),
         layers.Dropout(0.3),
-        layers.Dense(64, activation='relu'),
+        layers.Dense(64, activation='relu', kernel_regularizer=reg),
         layers.Dropout(0.2),
         layers.Dense(num_classes, activation='softmax')
     ], name="asl_static_mlp")
@@ -96,16 +103,21 @@ def augment_landmarks(X, y):
 
 def _generate_augmented_pts(pts):
     """Generate augmented versions of a (21, 3) landmark array."""
-    # 1. Jitter + Scale
-    scale = np.random.uniform(0.9, 1.1)
-    noise = np.random.normal(0, 0.015, size=pts.shape)
+    # 1. Jitter + Scale (wider range for better real-world generalization)
+    scale = np.random.uniform(0.85, 1.15)
+    noise = np.random.normal(0, 0.02, size=pts.shape)
     yield (pts * scale) + noise
 
-    # 2. Z-axis rotation
-    theta = np.radians(np.random.uniform(-20, 20))
+    # 2. Z-axis rotation (wider range: ±30 degrees instead of ±20)
+    theta = np.radians(np.random.uniform(-30, 30))
     c, s = np.cos(theta), np.sin(theta)
     rot = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
     yield np.dot(pts, rot.T)
+
+    # 3. Mirror (simulate left-hand signers during training)
+    mirrored = pts.copy()
+    mirrored[:, 0] = -mirrored[:, 0]  # Flip X axis
+    yield mirrored
 
 
 def _compute_derived_features(coords_norm):
