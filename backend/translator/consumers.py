@@ -60,8 +60,9 @@ class TranslatorConsumer(AsyncWebsocketConsumer):
         try:
             self.holistic = get_holistic_model(
                 static_image_mode=False,
-                min_detection_confidence=0.7,
-                min_tracking_confidence=0.5
+                model_complexity=0,            # Lite model — 2-3× faster inference
+                min_detection_confidence=0.5,   # Accept detections faster (was 0.7)
+                min_tracking_confidence=0.4     # Cheaper tracking between detections (was 0.5)
             )
         except Exception as e:
             logger.error(f"[WS] MediaPipe init failed: {e}")

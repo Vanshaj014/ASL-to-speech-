@@ -105,7 +105,7 @@ export function useWebSocket(onMessage) {
   }, []);
 
   const canSendFrame = useCallback(() => {
-    return pendingFramesRef.current === 0;
+    return pendingFramesRef.current < 2; // Allow 2 in-flight frames for pipelining
   }, []);
 
   const sendMessage = useCallback((data) => {

@@ -241,11 +241,16 @@ def normalize_keypoints(keypoints):
     return keypoints
 
 
-def get_holistic_model(static_image_mode=False, min_detection_confidence=0.7,
+def get_holistic_model(static_image_mode=False, model_complexity=1,
+                       min_detection_confidence=0.7,
                        min_tracking_confidence=0.5):
-    """Return a configured MediaPipe Holistic instance."""
+    """Return a configured MediaPipe Holistic instance.
+    
+    model_complexity: 0=Lite (fastest), 1=Full (default), 2=Heavy (most accurate).
+    """
     return mp_holistic.Holistic(
         static_image_mode=static_image_mode,
+        model_complexity=model_complexity,
         min_detection_confidence=min_detection_confidence,
         min_tracking_confidence=min_tracking_confidence
     )
